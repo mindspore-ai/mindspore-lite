@@ -55,6 +55,18 @@ constexpr uint32_t kCubeFastPathChunkLen = 64;
 constexpr uint32_t kVectorMulBlockSize = 64;
 // Number of Taylor-series terms used by ScalarExp to approximate exp on a scalar.
 constexpr int kExpTaylorTerms = 12;
+// Number of value heads that share one Q/K head in the paired fast path
+// (a value-head pair runs the shared attention prework once for both heads).
+constexpr uint32_t kPairValueHeads = 2;
+// Per-core cube-stage slot that caches the raw attention products of a pair.
+constexpr uint32_t kAttnRawSlot = 2;
+// Width of the 2x2 block factorization used by the blocked recursive inverse,
+// and the width of each of its diagonal sub-blocks.
+constexpr uint32_t kBlockDiagWidth = 32;
+constexpr uint32_t kBlockDiagHalf = 16;
+// 16x16 granularity of the Vector transpose (TransDataTo5HD) and of the 16x16
+// diagonal solves inside the blocked recursive inverse.
+constexpr uint32_t kTransposeBlockDim = 16;
 // Implemented fast-path decisions (kept as compile-time documentation of the
 // numerics; they are unconditional in this kernel):
 //   * recursive-inverse block products use two-term compensation
@@ -124,7 +136,6 @@ class ChunkGatedDeltaRule {
     vStepAligned_ = 0;
     blockIdx_ = 0;
     workspaceAddr_ = nullptr;
-    attnStaged_ = 0;
     keyCacheValid_ = 0;
   }
 
@@ -137,6 +148,25 @@ class ChunkGatedDeltaRule {
     pipe_ = pipe;
     SetGlobalTensors(initParams);
     InitLocalBuffers();
+  }
+
+  // Convert an NZ (fractal) FP32 tile produced by L0C->UB into ND rows.
+  // The L0C->UB blob is column-group major: one 16-column group holds all
+  // kRows rows as kRows*16 contiguous floats (row r at offset r*16). A whole
+  // group therefore moves with a single strided DataCopy whose repeat stride
+  // skips (kCols - 16) floats, replacing the former one-descriptor-per-row
+  // loop (64 descriptors -> kCols/16) with a byte-identical move.
+  template <uint32_t kRows, uint32_t kCols>
+  __aicore__ inline void NzTileToNd(LocalTensor<float> dst, LocalTensor<float> cNz) {
+    constexpr uint32_t kLaneFloats = kNzFractalDim;
+    constexpr uint32_t kGroupFloats = kRows * kLaneFloats;
+    constexpr uint16_t kLaneBlocks = kLaneFloats * sizeof(float) / BLOCK_BYTES;
+    constexpr uint16_t kDstGapBlocks = (kCols - kLaneFloats) * sizeof(float) / BLOCK_BYTES;
+    DataCopyParams params{static_cast<uint16_t>(kRows), kLaneBlocks, 0, kDstGapBlocks};
+    for (uint32_t group = 0; group < kCols / kLaneFloats; ++group) {
+      DataCopy(dst[group * kLaneFloats], cNz[group * kGroupFloats], params);
+    }
+    PipeBarrier<PIPE_ALL>();
   }
 
   __aicore__ inline void CopyL0CToUb(LocalTensor<float> dst, LocalTensor<float> src, const DataCopyParams &copyParams,
@@ -176,7 +206,9 @@ class ChunkGatedDeltaRule {
     uint32_t stateTileBytes = stateStrideK_ * avStepAligned * sizeof(outType);
     uint32_t chunkOutBytes = cs * avStepAligned * sizeof(outType);
     uint32_t outQueueBytes = stateTileBytes;
-    if (chunkOutBytes > outQueueBytes) outQueueBytes = chunkOutBytes;
+    if (chunkOutBytes > outQueueBytes) {
+      outQueueBytes = chunkOutBytes;
+    }
     pipe_->InitBuffer(stateOutQueue_, BUFFER_NUM, outQueueBytes);
 
     // tmpBuff layout (all FP32):
@@ -207,17 +239,13 @@ class ChunkGatedDeltaRule {
     chunkVFp32 = tmpBuff.GetWithOffset<float>(cs * avStepAligned, off);
     off += cs * avStepAligned * sizeof(float);
 
-    if (vStep_ >= realV_ || ShouldSplitVTiles()) {
-      uint32_t overlapSize = (cs * cs > stateStrideK_ * avStepAligned) ? cs * cs : stateStrideK_ * avStepAligned;
-      chunkScoresFp32 = tmpBuff.GetWithOffset<float>(overlapSize, off);
-      stateInFp32 = tmpBuff.GetWithOffset<float>(stateStrideK_ * avStepAligned, off);
-      off += overlapSize * sizeof(float);
-    } else {
-      chunkScoresFp32 = tmpBuff.GetWithOffset<float>(cs * cs, off);
-      off += cs * cs * sizeof(float);
-      stateInFp32 = tmpBuff.GetWithOffset<float>(stateStrideK_ * avStepAligned, off);
-      off += stateStrideK_ * avStepAligned * sizeof(float);
-    }
+    // A work item is one (batch, value head, V tile), so a core holds a single V
+    // tile at a time: chunkScoresFp32 is dead before that tile loads the state,
+    // and the two may therefore share one region sized by the larger of them.
+    uint32_t overlapSize = (cs * cs > stateStrideK_ * avStepAligned) ? cs * cs : stateStrideK_ * avStepAligned;
+    chunkScoresFp32 = tmpBuff.GetWithOffset<float>(overlapSize, off);
+    stateInFp32 = tmpBuff.GetWithOffset<float>(stateStrideK_ * avStepAligned, off);
+    off += overlapSize * sizeof(float);
 
     chunkAttnOutFp32 = tmpBuff.GetWithOffset<float>(cs * avStepAligned, off);
     off += cs * avStepAligned * sizeof(float);
@@ -261,34 +289,53 @@ class ChunkGatedDeltaRule {
         seq0 = seq1;
         continue;
       }
-
-      if (ShouldSplitVTiles()) {
-        uint32_t vTileCount = Ceil(realV_, vStep_);
-        for (uint64_t head_i = 0; head_i < NV_; head_i++) {
-          for (uint32_t vTileIdx = 0; vTileIdx < vTileCount; vTileIdx++) {
-            if (!IsCurrentBlock(seqLen)) continue;
-            ProcessHeadVTile(seq0, seq1, head_i, batch_i, vTileIdx);
-          }
-        }
-      } else {
-        const bool canPair = (NV_ % 2 == 0) && (NK_ > 0) && (NV_ >= NK_) && (NV_ / NK_ == 2);
-        if (canPair) {
-          for (uint64_t head_i = 0; head_i < NV_; head_i += 2) {
-            if (!IsCurrentBlockN(seqLen, 2)) continue;
-            ProcessHeadPair(seq0, seq1, head_i, batch_i);
-          }
-        } else {
-          for (uint64_t head_i = 0; head_i < NV_; head_i++) {
-            if (!IsCurrentBlock(seqLen)) continue;
-            ProcessHead(seq0, seq1, head_i, batch_i);
-          }
-        }
-      }
+      ProcessBatch(seq0, seq1, seqLen, batch_i);
       seq0 = seq1;
     }
   }
 
  private:
+  // One work item is (batch, value head, V tile) when a head spans several V
+  // tiles, otherwise (batch, value head) or (batch, value-head pair).
+  __aicore__ inline void ProcessBatch(int32_t seq0, int32_t seq1, int32_t seqLen, uint64_t batch_i) {
+    if (ShouldSplitVTiles()) {
+      ProcessBatchVTiles(seq0, seq1, seqLen, batch_i);
+    } else {
+      ProcessBatchHeads(seq0, seq1, seqLen, batch_i);
+    }
+  }
+
+  __aicore__ inline void ProcessBatchVTiles(int32_t seq0, int32_t seq1, int32_t seqLen, uint64_t batch_i) {
+    uint32_t vTileCount = Ceil(realV_, vStep_);
+    for (uint64_t head_i = 0; head_i < NV_; head_i++) {
+      for (uint32_t vTileIdx = 0; vTileIdx < vTileCount; vTileIdx++) {
+        if (!IsCurrentBlock(seqLen)) {
+          continue;
+        }
+        ProcessHeadVTile(seq0, seq1, head_i, batch_i, vTileIdx);
+      }
+    }
+  }
+
+  __aicore__ inline void ProcessBatchHeads(int32_t seq0, int32_t seq1, int32_t seqLen, uint64_t batch_i) {
+    const bool canPair = (NV_ % kPairValueHeads == 0) && (NK_ > 0) && (NV_ >= NK_) && (NV_ / NK_ == kPairValueHeads);
+    if (canPair) {
+      for (uint64_t head_i = 0; head_i < NV_; head_i += kPairValueHeads) {
+        if (!IsCurrentBlockN(seqLen, kPairValueHeads)) {
+          continue;
+        }
+        ProcessHeadPair(seq0, seq1, head_i, batch_i);
+      }
+      return;
+    }
+    for (uint64_t head_i = 0; head_i < NV_; head_i++) {
+      if (!IsCurrentBlock(seqLen)) {
+        continue;
+      }
+      ProcessHead(seq0, seq1, head_i, batch_i);
+    }
+  }
+
   __aicore__ inline bool ShouldSplitVTiles() { return realV_ > vStep_; }
 
   __aicore__ inline __gm__ uint8_t *GetKeyCacheBase() {
@@ -306,6 +353,17 @@ class ChunkGatedDeltaRule {
     return workspaceAddr_ + stageByteOffset;
   }
 
+  // ComputeRecursiveAttnBlocked64 solves the four diagonal 16x16 blocks with an
+  // implicit unit diagonal and writes them back whole, so on that path the
+  // explicit identity fill below would only rewrite 1.0 over 1.0.
+  __aicore__ inline bool InverseDiagonalIsIdentity(uint32_t chunkLen) {
+    if constexpr (kSpecializedDk == 0) {
+      return false;
+    }
+    constexpr uint32_t kScratchMinV = (kSpecializedDk <= 64) ? 80 : kSpecializedDk;
+    return chunkLen == kCubeFastPathChunkLen && chunkSize_ == kCubeFastPathChunkLen && vStepAligned_ >= kScratchMinV;
+  }
+
   __aicore__ inline bool IsCubeFastPath(uint32_t chunkLen, uint32_t avFp32) {
     if constexpr (kSpecializedDk != 0) {
       return realK_ <= kSpecializedDk && chunkLen == kCubeFastPathChunkLen && vStepAligned_ == kSpecializedDk &&
@@ -314,8 +372,13 @@ class ChunkGatedDeltaRule {
     return false;
   }
 
-  __aicore__ inline bool IsFusedValueOutputCubeFastPath(uint32_t chunkLen, uint32_t avFp32) {
-    return IsCubeFastPath(chunkLen, avFp32);
+  // Single source of truth for the staged attention fast path. StageAttnKeyOperands
+  // publishes K^T into the per-core key cache only under this predicate, so every
+  // reader of that cache (ComputeAttnMatrix / ProcessHeadPair) must gate on exactly
+  // the same condition. A weaker condition (e.g. vStepAligned_ >= kSpecializedDk)
+  // would let a consumer read a cache slot this chunk never wrote.
+  __aicore__ inline bool CanUseCubeAttnPath(uint32_t chunkLen) {
+    return IsCubeFastPath(chunkLen, vStepAligned_) && CanCacheAttnQuery(chunkLen);
   }
 
   // Copy a row-major GM slab to a zero-padded UB matrix using dav-2002
@@ -475,11 +538,7 @@ class ChunkGatedDeltaRule {
   }
 
   template <uint32_t kBlock>
-  __aicore__ inline void LoadMatmulBlockA(LocalTensor<half> a1Local, LocalTensor<half> a2Local,
-                                          GlobalTensor<half> src) {
-    DataCopy(a1Local, src, Nd2NzParams{1, kBlock, kBlock, 0, kBlock, kBlock, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
+  __aicore__ inline void LoadMatmulBlockA(LocalTensor<half> a1Local, LocalTensor<half> a2Local) {
     for (uint32_t blockIdx = 0; blockIdx < kBlock / 16; ++blockIdx) {
       LoadData(a2Local[blockIdx * kBlock * 16], a1Local[blockIdx * 512 / sizeof(half)],
                LoadData2DParams{0, kBlock / 16, kBlock / 16, 0, 0, false, 0});
@@ -487,11 +546,7 @@ class ChunkGatedDeltaRule {
   }
 
   template <uint32_t kBlock>
-  __aicore__ inline void LoadMatmulBlockB(LocalTensor<half> b1Local, LocalTensor<half> b2Local,
-                                          GlobalTensor<half> src) {
-    DataCopy(b1Local, src, Nd2NzParams{1, kBlock, kBlock, 0, kBlock, kBlock, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
+  __aicore__ inline void LoadMatmulBlockB(LocalTensor<half> b1Local, LocalTensor<half> b2Local) {
     for (uint32_t blockIdx = 0; blockIdx < kBlock / 16; ++blockIdx) {
       LoadData(b2Local[blockIdx * kBlock * 16], b1Local[blockIdx * 512 / sizeof(half)],
                LoadData2DParams{0, kBlock / 16, kBlock / 16, 0, 0, true, 0});
@@ -519,36 +574,30 @@ class ChunkGatedDeltaRule {
   __aicore__ inline void MatmulBlockFp32Compensated(LocalTensor<float> srcA, LocalTensor<float> srcB,
                                                     LocalTensor<float> residualA, LocalTensor<float> dst) {
     constexpr uint32_t kMatrixElements = kBlock * kBlock;
-    __gm__ uint8_t *stageBase = GetCubeStageBase(0);
-    GlobalTensor<half> aHiGm;
-    GlobalTensor<half> bHiGm;
-    GlobalTensor<half> aLoGm;
-    aHiGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(stageBase), kMatrixElements);
-    bHiGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(stageBase + kMatrixElements * sizeof(half)), kMatrixElements);
-    aLoGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(stageBase + 2 * kMatrixElements * sizeof(half)),
-                          kMatrixElements);
-
-    // Two-term compensation: (A_hi + A_lo) * B_hi. B's FP16 quantization is
-    // O(2^-11) of its magnitude, far below the FP16 output resolution, so the
-    // A_hi * B_lo cross term is dropped (one Cube pass saved per block).
-    StageHalfWithResidual(srcA, residualA, aHiGm, aLoGm, kMatrixElements);
-    StageHalf(srcB, bHiGm, kMatrixElements);
-    PipeBarrier<PIPE_ALL>();
 
     LocalMemAllocator<AscendC::Hardware::L1> l1Allocator;
     LocalMemAllocator<AscendC::Hardware::L0A> l0aAllocator;
     LocalMemAllocator<AscendC::Hardware::L0B> l0bAllocator;
     LocalMemAllocator<AscendC::Hardware::L0C> l0cAllocator;
-    LocalTensor<half> a1Local = l1Allocator.Alloc<TPosition::A1, half>(kMatrixElements);
+    LocalTensor<half> aHiLocal = l1Allocator.Alloc<TPosition::A1, half>(kMatrixElements);
+    LocalTensor<half> aLoLocal = l1Allocator.Alloc<TPosition::A1, half>(kMatrixElements);
     LocalTensor<half> b1Local = l1Allocator.Alloc<TPosition::B1, half>(kMatrixElements);
     LocalTensor<half> a2Local = l0aAllocator.Alloc<TPosition::A2, half>(kMatrixElements);
     LocalTensor<half> b2Local = l0bAllocator.Alloc<TPosition::B2, half>(kMatrixElements);
     LocalTensor<float> c1Local = l0cAllocator.Alloc<TPosition::CO1, float>(kMatrixElements);
 
-    LoadMatmulBlockA<kBlock>(a1Local, a2Local, aHiGm);
-    LoadMatmulBlockB<kBlock>(b1Local, b2Local, bHiGm);
+    // Two-term compensation: (A_hi + A_lo) * B_hi. B's FP16 quantization is
+    // O(2^-11) of its magnitude, far below the FP16 output resolution, so the
+    // A_hi * B_lo cross term is dropped (one Cube pass saved per block).
+    StageHalfWithResidualToL1<kBlock, kBlock>(srcA, residualA, aHiLocal, aLoLocal);
+    StageHalfToL1<kBlock, kBlock>(srcB, b1Local);
+    SetFlag<HardEvent::MTE3_MTE1>(0);
+    WaitFlag<HardEvent::MTE3_MTE1>(0);
+
+    LoadMatmulBlockA<kBlock>(aHiLocal, a2Local);
+    LoadMatmulBlockB<kBlock>(b1Local, b2Local);
     MmadMatmulBlock<kBlock>(c1Local, a2Local, b2Local, true);
-    LoadMatmulBlockA<kBlock>(a1Local, a2Local, aLoGm);
+    LoadMatmulBlockA<kBlock>(aLoLocal, a2Local);
     MmadMatmulBlock<kBlock>(c1Local, a2Local, b2Local, false);
 
     LocalTensor<float> cNz = residualA;
@@ -557,13 +606,7 @@ class ChunkGatedDeltaRule {
     cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
     CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
     PipeBarrier<PIPE_ALL>();
-    constexpr uint16_t kNdBlockLen = kNzFractalDim * sizeof(float) / 32;
-    constexpr uint16_t kNzSrcStride = (kBlock / 16 * 16 * 16 - 16) * sizeof(float) / 32;
-    DataCopyParams nzToNdParams{static_cast<uint16_t>(kBlock / 16), kNdBlockLen, kNzSrcStride, 0};
-    for (uint32_t row = 0; row < kBlock; ++row) {
-      DataCopy(dst[row * kBlock], cNz[row * 16], nzToNdParams);
-    }
-    PipeBarrier<PIPE_ALL>();
+    NzTileToNd<kBlock, kBlock>(dst, cNz);
   }
 
   // Solve one 16x16 diagonal block entirely on the Vector pipe. For every
@@ -573,21 +616,37 @@ class ChunkGatedDeltaRule {
   // The only scalar work left is the fixed 15-step dependency schedule and
   // setup of the 16 diagonal/offset entries; the O(block^3) arithmetic and
   // all coefficient application stay on PIPE_V.
-  __aicore__ inline void ComputeRecursiveAttnDiagonalBlock(LocalTensor<float> &buf, uint32_t rowBase, uint32_t ld) {
+  // Solve all four 16x16 diagonal blocks of the 64x64 strict-lower A in one
+  // batched Vector recurrence. The blocks are independent, so a single Gather
+  // plus one Brcb feed four independent MulAddDst per step, collapsing four
+  // serial 15-step chains into 15 steps whose only dependency is the k chain.
+  // Every element still receives exactly the same FP32 multiply-add sequence
+  // as the former per-block version, so the result is bit-identical.
+  // The Gather offset table is independent of k: block b row j sits at
+  // b*16*(ld+1) + j*ld relative to (k+1, k), so only srcBase moves with k.
+  __aicore__ inline void ComputeRecursiveAttnDiagonals64(LocalTensor<float> &buf, uint32_t ld) {
     constexpr uint32_t kBlock = 16;
-    constexpr uint32_t kMatrixElements = kBlock * kBlock;
+    constexpr uint32_t kBlocks = 4;
+    constexpr uint32_t kBlockElements = kBlock * kBlock;
+    constexpr uint32_t kColumnCount = kBlocks * kBlock;
     LocalTensor<float> inverse = chunkVFp32;
-    LocalTensor<float> coefficientBlocks = chunkVFp32[kMatrixElements];
+    LocalTensor<float> coefficientBlocks = chunkVFp32[kBlocks * kBlockElements];
     LocalTensor<float> column = deltaFp32;
     LocalTensor<uint32_t> gatherOffsets = dotProductFp32.template ReinterpretCast<uint32_t>();
 
-    Duplicate(inverse, 0.0f, kMatrixElements);
+    Duplicate(inverse, 0.0f, kBlocks * kBlockElements);
     TQueSync<PIPE_V, PIPE_S> initVectorToScalar;
     initVectorToScalar.SetFlag(0);
     initVectorToScalar.WaitFlag(0);
-    for (uint32_t i = 0; i < kBlock; ++i) {
-      inverse.SetValue(i * kBlock + i, 1.0f);
-      gatherOffsets.SetValue(i, i * ld * sizeof(float));
+    for (uint32_t b = 0; b < kBlocks; ++b) {
+      for (uint32_t d = 0; d < kBlock; ++d) {
+        inverse.SetValue(b * kBlockElements + d * kBlock + d, 1.0f);
+      }
+    }
+    for (uint32_t b = 0; b < kBlocks; ++b) {
+      for (uint32_t j = 0; j < kBlock; ++j) {
+        gatherOffsets.SetValue(b * kBlock + j, (b * kBlock * (ld + 1) + j * ld) * sizeof(float));
+      }
     }
     TQueSync<PIPE_S, PIPE_V> initScalarToVector;
     initScalarToVector.SetFlag(0);
@@ -597,41 +656,50 @@ class ChunkGatedDeltaRule {
       uint32_t validRows = kBlock - k - 1;
       // All three operations are PIPE_V and execute in issue order, so same-pipe
       // barriers between them are redundant; only the RAW chain must be intact.
-      Gather(column, buf[(rowBase + k + 1) * ld + rowBase + k], gatherOffsets, static_cast<uint32_t>(0), validRows);
-      uint8_t brcbRepeats = static_cast<uint8_t>(Ceil(validRows, FP32_NUM_PER_BLOCK));
-      Brcb(coefficientBlocks, column, brcbRepeats, BrcbRepeatParams{1, 8});
-      MulAddDst(inverse[(k + 1) * kBlock], coefficientBlocks, inverse[k * kBlock], k + 1,
-                static_cast<uint8_t>(validRows), BinaryRepeatParams{1, 0, 1, kBlock / FP32_NUM_PER_BLOCK, 1, 0});
+      Gather(column, buf, gatherOffsets, static_cast<uint32_t>(((k + 1) * ld + k) * sizeof(float)), kColumnCount);
+      Brcb(coefficientBlocks, column, static_cast<uint8_t>(Ceil(kColumnCount, FP32_NUM_PER_BLOCK)),
+           BrcbRepeatParams{1, 8});
+      for (uint32_t b = 0; b < kBlocks; ++b) {
+        MulAddDst(inverse[b * kBlockElements + (k + 1) * kBlock], coefficientBlocks[b * kBlock * FP32_NUM_PER_BLOCK],
+                  inverse[b * kBlockElements + k * kBlock], k + 1, static_cast<uint8_t>(validRows),
+                  BinaryRepeatParams{1, 0, 1, kBlock / FP32_NUM_PER_BLOCK, 1, 0});
+      }
     }
 
-    for (uint32_t row = 0; row < kBlock; ++row) {
-      Muls(buf[(rowBase + row) * ld + rowBase], inverse[row * kBlock], 1.0f, kBlock);
+    for (uint32_t b = 0; b < kBlocks; ++b) {
+      CopyRowsFp32(buf[b * kBlock * ld + b * kBlock], ld, inverse[b * kBlockElements], kBlock, kBlock, kBlock);
     }
-    PipeBarrier<PIPE_V>();
+  }
+
+  // One strided FP32 row-block copy: `rows` x `cols` floats with independent
+  // source/destination leading dimensions. Replaces the former per-row
+  // Muls(x, 1.0f) loops (16-32 Vector instructions each) by a single
+  // DataCopy; the copy is bit-identical because it moves the same bytes.
+  __aicore__ inline void CopyRowsFp32(LocalTensor<float> dst, uint32_t dstLd, LocalTensor<float> src, uint32_t srcLd,
+                                      uint32_t rows, uint32_t cols) {
+    DataCopyParams params{static_cast<uint16_t>(rows), static_cast<uint16_t>(cols * sizeof(float) / BLOCK_BYTES),
+                          static_cast<uint16_t>((srcLd - cols) * sizeof(float) / BLOCK_BYTES),
+                          static_cast<uint16_t>((dstLd - cols) * sizeof(float) / BLOCK_BYTES)};
+    DataCopy(dst, src, params);
+    PipeBarrier<PIPE_ALL>();
   }
 
   // Build diag(A0, A1) into a contiguous 32x32 tile from two 16x16 sub-blocks
   // of a row-strided (ld) buffer; the off-diagonal 16x16 blocks are exact zeros.
   __aicore__ inline void BuildBlockDiag32(LocalTensor<float> dst, LocalTensor<float> &buf, uint32_t ld, uint32_t r0,
                                           uint32_t c0, uint32_t r1, uint32_t c1) {
-    constexpr uint32_t kHalf = 16;
-    Duplicate(dst, 0.0f, 32 * 32);
+    Duplicate(dst, 0.0f, kBlockDiagWidth * kBlockDiagWidth);
     PipeBarrier<PIPE_V>();
-    for (uint32_t row = 0; row < kHalf; ++row) {
-      Muls(dst[row * 32], buf[(r0 + row) * ld + c0], 1.0f, kHalf);
-      Muls(dst[(kHalf + row) * 32 + kHalf], buf[(r1 + row) * ld + c1], 1.0f, kHalf);
-    }
-    PipeBarrier<PIPE_V>();
+    CopyRowsFp32(dst, kBlockDiagWidth, buf[r0 * ld + c0], ld, kBlockDiagHalf, kBlockDiagHalf);
+    CopyRowsFp32(dst[kBlockDiagHalf * kBlockDiagWidth + kBlockDiagHalf], kBlockDiagWidth, buf[r1 * ld + c1], ld,
+                 kBlockDiagHalf, kBlockDiagHalf);
   }
 
   __aicore__ inline void WriteBlockDiag32(LocalTensor<float> &buf, uint32_t ld, LocalTensor<float> src, uint32_t r0,
                                           uint32_t c0, uint32_t r1, uint32_t c1) {
-    constexpr uint32_t kHalf = 16;
-    for (uint32_t row = 0; row < kHalf; ++row) {
-      Muls(buf[(r0 + row) * ld + c0], src[row * 32], 1.0f, kHalf);
-      Muls(buf[(r1 + row) * ld + c1], src[(kHalf + row) * 32 + kHalf], 1.0f, kHalf);
-    }
-    PipeBarrier<PIPE_V>();
+    CopyRowsFp32(buf[r0 * ld + c0], ld, src, kBlockDiagWidth, kBlockDiagHalf, kBlockDiagHalf);
+    CopyRowsFp32(buf[r1 * ld + c1], ld, src[kBlockDiagHalf * kBlockDiagWidth + kBlockDiagHalf], kBlockDiagWidth,
+                 kBlockDiagHalf, kBlockDiagHalf);
   }
 
   // For a 64x64 strict-lower A, invert I-A with a 2x2 block factorization:
@@ -640,13 +708,10 @@ class ChunkGatedDeltaRule {
   // The diagonal solves remain FP32 Vector recurrences; compensated Cube
   // products handle the dense cross block without weakening FP32 stability.
   __aicore__ inline void ComputeRecursiveAttnBlocked64(LocalTensor<float> &buf, uint32_t ld) {
-    constexpr uint32_t kBlock = 32;
+    constexpr uint32_t kBlock = kBlockDiagWidth;
     constexpr uint32_t kMatrixElements = kBlock * kBlock;
-    // Four independent 16x16 diagonal inverses.
-    ComputeRecursiveAttnDiagonalBlock(buf, 0, ld);
-    ComputeRecursiveAttnDiagonalBlock(buf, 16, ld);
-    ComputeRecursiveAttnDiagonalBlock(buf, 32, ld);
-    ComputeRecursiveAttnDiagonalBlock(buf, 48, ld);
+    // Four independent 16x16 diagonal inverses, solved as one batched recurrence.
+    ComputeRecursiveAttnDiagonals64(buf, ld);
 
     LocalTensor<float> srcA = chunkVFp32;
     LocalTensor<float> srcB = chunkVFp32[kMatrixElements];
@@ -656,31 +721,25 @@ class ChunkGatedDeltaRule {
     // The two 32x32 sub-blocks are independent, so batch their dependent
     // product pairs into block-diagonal 32x32 products: exact zeros contribute
     // +0.0f only, keeping the FP32 accumulation bit-identical.
-    BuildBlockDiag32(srcA, buf, ld, 16, 0, 48, 32);  // A10 of both sub-blocks
-    BuildBlockDiag32(srcB, buf, ld, 0, 0, 32, 32);   // U00 of both sub-blocks
+    // A10 of both sub-blocks.
+    BuildBlockDiag32(srcA, buf, ld, kBlockDiagHalf, 0, kBlock + kBlockDiagHalf, kBlock);
+    // U00 of both sub-blocks.
+    BuildBlockDiag32(srcB, buf, ld, 0, 0, kBlock, kBlock);
     MatmulBlockFp32Compensated<kBlock>(srcA, srcB, residualA, product);
-    BuildBlockDiag32(srcB, buf, ld, 16, 16, 48, 48);  // U11 of both sub-blocks
+    // U11 of both sub-blocks.
+    BuildBlockDiag32(srcB, buf, ld, kBlockDiagHalf, kBlockDiagHalf, kBlock + kBlockDiagHalf, kBlock + kBlockDiagHalf);
     MatmulBlockFp32Compensated<kBlock>(srcB, product, residualA, product);
-    WriteBlockDiag32(buf, ld, product, 16, 0, 48, 32);
+    WriteBlockDiag32(buf, ld, product, kBlockDiagHalf, 0, kBlock + kBlockDiagHalf, kBlock);
 
     // Top-level 2x2 factorization for the full 64x64 block (unchanged).
-    for (uint32_t row = 0; row < kBlock; ++row) {
-      Muls(srcA[row * kBlock], buf[(row + kBlock) * ld], 1.0f, kBlock);
-      Muls(srcB[row * kBlock], buf[row * ld], 1.0f, kBlock);
-    }
-    PipeBarrier<PIPE_V>();
+    CopyRowsFp32(srcA, kBlock, buf[kBlock * ld], ld, kBlock, kBlock);
+    CopyRowsFp32(srcB, kBlock, buf, ld, kBlock, kBlock);
     MatmulBlockFp32Compensated<kBlock>(srcA, srcB, residualA, product);
 
-    for (uint32_t row = 0; row < kBlock; ++row) {
-      Muls(srcA[row * kBlock], buf[(row + kBlock) * ld + kBlock], 1.0f, kBlock);
-    }
-    PipeBarrier<PIPE_V>();
+    CopyRowsFp32(srcA, kBlock, buf[kBlock * ld + kBlock], ld, kBlock, kBlock);
     MatmulBlockFp32Compensated<kBlock>(srcA, product, residualA, product);
 
-    for (uint32_t row = 0; row < kBlock; ++row) {
-      Muls(buf[(row + kBlock) * ld], product[row * kBlock], 1.0f, kBlock);
-    }
-    PipeBarrier<PIPE_V>();
+    CopyRowsFp32(buf[kBlock * ld], ld, product, kBlock, kBlock, kBlock);
   }
 
   // Compute recursive intra-chunk attn matrix in-place.
@@ -694,8 +753,11 @@ class ChunkGatedDeltaRule {
     // small-Dk shapes switch from the Vector recurrence to this blocked path,
     // which changes their rounding, so the switch is deliberately not made.
     constexpr uint32_t kBlockedScratchMinV = (kSpecializedDk == 0) ? 128 : (kSpecializedDk <= 64 ? 80 : kSpecializedDk);
-    if (likely(chunkLen == kCubeFastPathChunkLen && ld == kCubeFastPathChunkLen &&
-               vStepAligned_ >= kBlockedScratchMinV)) {
+    // The blocked inverse is only used together with the complete Cube fast path
+    // (realK_ within the compiled bucket). Scalar-built attention data takes the
+    // plain recurrence below: mixing it with the blocked path is not supported.
+    if (likely(realK_ <= static_cast<uint32_t>(kSpecializedDk) && chunkLen == kCubeFastPathChunkLen &&
+               ld == kCubeFastPathChunkLen && vStepAligned_ >= kBlockedScratchMinV)) {
       ComputeRecursiveAttnBlocked64(buf, ld);
       return;
     }
@@ -759,7 +821,7 @@ class ChunkGatedDeltaRule {
   // the chunk currently shared by a value-head pair.
   __aicore__ inline void SaveAttnRawToGm() {
     constexpr uint32_t kCElems = 64 * 64;
-    __gm__ uint8_t *slot2 = GetCubeStageBase(2);
+    __gm__ uint8_t *slot2 = GetCubeStageBase(kAttnRawSlot);
     GlobalTensor<float> gmScores;
     GlobalTensor<float> gmQk;
     gmScores.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(slot2), kCElems);
@@ -777,7 +839,7 @@ class ChunkGatedDeltaRule {
 
   __aicore__ inline void RestoreAttnRawFromGm() {
     constexpr uint32_t kCElems = 64 * 64;
-    __gm__ uint8_t *slot2 = GetCubeStageBase(2);
+    __gm__ uint8_t *slot2 = GetCubeStageBase(kAttnRawSlot);
     GlobalTensor<float> gmScores;
     GlobalTensor<float> gmQk;
     gmScores.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(slot2), kCElems);
@@ -807,11 +869,12 @@ class ChunkGatedDeltaRule {
       bool isLastChunk = (c + 1 == numC);
       bool pairFast = false;
       if constexpr (kSpecializedDk != 0) {
-        pairFast = realK_ <= kSpecializedDk && chunkLen == kCubeFastPathChunkLen && vStepAligned_ >= kSpecializedDk &&
-                   CanCacheAttnQuery(chunkLen);
+        // Must match the StageAttnKeyOperands predicate below, which is what
+        // fills the key cache consumed by this chunk's attention products.
+        pairFast = CanUseCubeAttnPath(chunkLen);
       }
       if (!pairFast) {
-        for (uint32_t hv = 0; hv < 2; ++hv) {
+        for (uint32_t hv = 0; hv < kPairValueHeads; ++hv) {
           uint64_t hi = head_i + hv;
           uint64_t stateBaseOffset = (batch_i * NV_ + hi) * realK_ * realV_;
           uint64_t workspaceStateBaseOffset = (batch_i * NV_ + hi) * realK_ * stateWorkspaceStrideV_;
@@ -819,7 +882,6 @@ class ChunkGatedDeltaRule {
         }
         continue;
       }
-      attnStaged_ = 0;
       keyCacheValid_ = 0;
       LoadChunkKey(qkHead, t_start, chunkLen);
       StageAttnKeyOperands(qkHead, t_start, chunkLen);
@@ -830,9 +892,11 @@ class ChunkGatedDeltaRule {
       ComputeKBeta(chunkLen);
       PrepareDecayAndExp(chunkLen);
       PrepareAttnQueryCache(qkHead, t_start, chunkLen);
-      ComputeAttnProductsCube<kSpecializedDk>(/*rawOnly=*/true);
+      // Stop after the raw products: each head of the pair post-processes them
+      // from the per-core GM slot below.
+      ComputeAttnProductsCube<kSpecializedDk>(true);
       SaveAttnRawToGm();
-      for (uint32_t hv = 0; hv < 2; ++hv) {
+      for (uint32_t hv = 0; hv < kPairValueHeads; ++hv) {
         uint64_t hi = head_i + hv;
         uint64_t stateBaseOffset = (batch_i * NV_ + hi) * realK_ * realV_;
         uint64_t workspaceStateBaseOffset = (batch_i * NV_ + hi) * realK_ * stateWorkspaceStrideV_;
@@ -848,8 +912,10 @@ class ChunkGatedDeltaRule {
         }
         PostProcessAttnProducts();
         ComputeRecursiveAttn(chunkScoresFp32, chunkLen, cs);
-        for (uint32_t i = 0; i < chunkLen; i++) {
-          chunkScoresFp32.SetValue(i * cs + i, 1.0f);
+        if (!InverseDiagonalIsIdentity(chunkLen)) {
+          for (uint32_t i = 0; i < chunkLen; i++) {
+            chunkScoresFp32.SetValue(i * cs + i, 1.0f);
+          }
         }
         ComputeKCumdecay(chunkLen);
         ProcessVTiles(t_start, chunkLen, hi, qkHead, avFp32, stateBaseOffset, workspaceStateBaseOffset, c, isLastChunk);
@@ -896,7 +962,6 @@ class ChunkGatedDeltaRule {
     uint32_t chunkLen =
       (static_cast<uint32_t>(totalLen) - c * cs >= cs) ? cs : static_cast<uint32_t>(totalLen) - c * cs;
 
-    attnStaged_ = 0;
     keyCacheValid_ = 0;
     LoadChunkKey(qkHead, t_start, chunkLen);
     StageAttnKeyOperands(qkHead, t_start, chunkLen);
@@ -919,7 +984,6 @@ class ChunkGatedDeltaRule {
     uint32_t chunkLen =
       (static_cast<uint32_t>(totalLen) - c * cs >= cs) ? cs : static_cast<uint32_t>(totalLen) - c * cs;
 
-    attnStaged_ = 0;
     keyCacheValid_ = 0;
     LoadChunkKey(qkHead, t_start, chunkLen);
     StageAttnKeyOperands(qkHead, t_start, chunkLen);
@@ -939,32 +1003,27 @@ class ChunkGatedDeltaRule {
   // attention products. Runs before ComputeKBeta so the temporary FP16
   // transpose buffer (kCumdecayFp32, still free) can be reused safely.
   __aicore__ inline void StageAttnKeyOperands(uint64_t qkHead, int32_t t_start, uint32_t chunkLen) {
-    if (likely(!IsCubeFastPath(chunkLen, vStepAligned_) || !CanCacheAttnQuery(chunkLen))) {
+    if (likely(!CanUseCubeAttnPath(chunkLen))) {
       return;
     }
     constexpr uint32_t kMatmulM = 64;
     constexpr uint32_t kAElements = kMatmulM * kSpecializedDk;
     constexpr uint32_t kBElements = kSpecializedDk * kMatmulM;
-    __gm__ uint8_t *stageBase = GetCubeStageBase(0);
-    GlobalTensor<half> aStageGm;
-    GlobalTensor<half> bStageGm;
-    aStageGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(stageBase), kAElements);
-    bStageGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(stageBase + kAElements * sizeof(half)), kBElements);
 
     LocalTensor<half> keyTrans = chunkVFp32.template ReinterpretCast<half>();
     LocalTensor<half> keyT = kCumdecayFp32.template ReinterpretCast<half>();
     Cast(keyTrans, chunkKFp32, RoundMode::CAST_NONE, kAElements);
     PipeBarrier<PIPE_V>();
     TransDataTo5HDParams transposeParams;
-    transposeParams.repeatTimes = static_cast<uint8_t>(kSpecializedDk / 16);
+    transposeParams.repeatTimes = static_cast<uint8_t>(kSpecializedDk / kTransposeBlockDim);
     transposeParams.srcRepStride = 1;
     transposeParams.dstRepStride = kMatmulM;
-    for (uint32_t block = 0; block < kMatmulM / 16; ++block) {
-      LocalTensor<half> srcRows[16];
-      LocalTensor<half> dstRows[16];
-      for (uint32_t row = 0; row < 16; ++row) {
-        srcRows[row] = keyTrans[block * 16 * kSpecializedDk + row * kSpecializedDk];
-        dstRows[row] = keyT[block * 16 + row * kMatmulM];
+    for (uint32_t block = 0; block < kMatmulM / kTransposeBlockDim; ++block) {
+      LocalTensor<half> srcRows[kTransposeBlockDim];
+      LocalTensor<half> dstRows[kTransposeBlockDim];
+      for (uint32_t row = 0; row < kTransposeBlockDim; ++row) {
+        srcRows[row] = keyTrans[block * kTransposeBlockDim * kSpecializedDk + row * kSpecializedDk];
+        dstRows[row] = keyT[block * kTransposeBlockDim + row * kMatmulM];
       }
       TransDataTo5HD<half>(dstRows, srcRows, transposeParams);
     }
@@ -972,11 +1031,14 @@ class ChunkGatedDeltaRule {
     event_t vectorToMte3 = static_cast<event_t>(pipe_->FetchEventID(HardEvent::V_MTE3));
     SetFlag<HardEvent::V_MTE3>(vectorToMte3);
     WaitFlag<HardEvent::V_MTE3>(vectorToMte3);
-    DataCopy(bStageGm, keyT, kBElements);
+    // K^T is stored once, in the per-core key cache: the attention product and
+    // the later state update both read it from there, so the former duplicate
+    // store into the shared cube stage slot is gone. The A operand (K, exact
+    // FP16) is no longer published through GM either: its consumer re-casts
+    // chunkKFp32 straight into the L1 NZ tile (see ComputeAttnProductsCube).
     GlobalTensor<half> keyCacheGm;
     keyCacheGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(GetKeyCacheBase()), kBElements);
     DataCopy(keyCacheGm, keyT, kBElements);
-    DataCopy(aStageGm, keyTrans, kAElements);
     keyCacheValid_ = 1;
     PipeBarrier<PIPE_ALL>();
   }
@@ -1005,10 +1067,9 @@ class ChunkGatedDeltaRule {
 
   __aicore__ inline void BuildCoefficientOffsets(LocalTensor<uint32_t> offsets, uint32_t chunkLen) {
     LocalTensor<int32_t> signedOffsets = offsets.template ReinterpretCast<int32_t>();
+    // CreateVecIndex and Muls are both PIPE_V (issue order is the dependency).
     CreateVecIndex<int32_t>(signedOffsets, 0, chunkLen);
-    PipeBarrier<PIPE_V>();
     Muls(signedOffsets, signedOffsets, static_cast<int32_t>(NV_ * sizeof(float)), chunkLen);
-    PipeBarrier<PIPE_V>();
   }
 
   // Inclusive prefix sum for at most one 64-row chunk. Ping-ponging between
@@ -1017,11 +1078,11 @@ class ChunkGatedDeltaRule {
     LocalTensor<float> src = gCumsumFp32;
     LocalTensor<float> dst = deltaFp32;
     bool resultInGCumsum = true;
+    // Muls/Add are both PIPE_V and execute in issue order, so the barriers
+    // between them are redundant (the caller still publishes V->S afterwards).
     for (uint32_t offset = 1; offset < chunkLen; offset <<= 1) {
       Muls(dst, src, 1.0f, chunkLen);
-      PipeBarrier<PIPE_V>();
       Add(dst[offset], src[offset], src, chunkLen - offset);
-      PipeBarrier<PIPE_V>();
       LocalTensor<float> tmp = src;
       src = dst;
       dst = tmp;
@@ -1029,7 +1090,6 @@ class ChunkGatedDeltaRule {
     }
     if (!resultInGCumsum) {
       Muls(gCumsumFp32, src, 1.0f, chunkLen);
-      PipeBarrier<PIPE_V>();
     }
   }
 
@@ -1051,12 +1111,13 @@ class ChunkGatedDeltaRule {
       event_t mte2ToVector = static_cast<event_t>(pipe_->FetchEventID(HardEvent::MTE2_V));
       SetFlag<HardEvent::MTE2_V>(mte2ToVector);
       WaitFlag<HardEvent::MTE2_V>(mte2ToVector);
+      // Cast / CreateVecIndex / Muls / Gather are all ordered by the S->V
+      // handshake inside CreateVecIndex (it is a scalar SetValue loop on
+      // dav_m200) plus same-pipe issue order, so no PIPE_V barrier is needed.
       Cast(chunkVFp32, betaLocal, RoundMode::CAST_NONE, slabElements);
-      PipeBarrier<PIPE_V>();
       BuildCoefficientOffsets(coefficientOffsets, chunkLen);
       offsetsReady = true;
       Gather(betaFp32, chunkVFp32, coefficientOffsets, static_cast<uint32_t>(head_i * sizeof(float)), chunkLen);
-      PipeBarrier<PIPE_V>();
     } else {
       for (uint32_t i = 0; i < chunkLen; ++i) {
         betaFp32.SetValue(i, LoadBeta(t_start + i, head_i));
@@ -1077,11 +1138,9 @@ class ChunkGatedDeltaRule {
         BuildCoefficientOffsets(coefficientOffsets, chunkLen);
       }
       Gather(gCumsumFp32, chunkVFp32, coefficientOffsets, static_cast<uint32_t>(head_i * sizeof(float)), chunkLen);
-      PipeBarrier<PIPE_V>();
       PrefixSumChunkG(chunkLen);
     } else if (hasGamma_ == 0) {
       Duplicate(gCumsumFp32, 0.0f, chunkLen);
-      PipeBarrier<PIPE_V>();
     } else {
       for (uint32_t i = 0; i < chunkLen; ++i) {
         gSum += LoadG(t_start + i, head_i);
@@ -1098,17 +1157,17 @@ class ChunkGatedDeltaRule {
     inputSync.SetFlag(0);
     inputSync.WaitFlag(0);
 
+    // Brcb / Duplicate / Mul are all PIPE_V and execute in issue order, so no
+    // same-pipe barrier is needed between them.
     LocalTensor<float> betaBlocks = chunkVFp32;
     uint8_t brcbRepeats = static_cast<uint8_t>(Ceil(chunkLen, FP32_NUM_PER_BLOCK));
     Brcb(betaBlocks, betaFp32, brcbRepeats, BrcbRepeatParams{1, 8});
-    PipeBarrier<PIPE_V>();
 
     // The padded K columns must remain exact zeros because all Cube products
     // consume the complete bucket width. A full-width, full-chunk tile is
     // entirely overwritten by the Mul below, so the fill is skipped there.
     if (!(realK_ == alignK_ && chunkLen == chunkSize_)) {
       Duplicate(kCumdecayFp32, 0.0f, chunkLen * alignK_);
-      PipeBarrier<PIPE_V>();
     }
 
     uint8_t rowStride = static_cast<uint8_t>(alignK_ / FP32_NUM_PER_BLOCK);
@@ -1122,7 +1181,8 @@ class ChunkGatedDeltaRule {
       Mul(kCumdecayFp32[kOffset], chunkKFp32[kOffset], betaBlocks, static_cast<uint64_t>(realK_ - kOffset),
           static_cast<uint8_t>(chunkLen), mulParams);
     }
-    PipeBarrier<PIPE_V>();
+    // The trailing V->S publication already orders the Mul chain for the scalar
+    // readers, so the former PipeBarrier<PIPE_V>() here was redundant.
     TQueSync<PIPE_V, PIPE_S> betaSync;
     betaSync.SetFlag(0);
     betaSync.WaitFlag(0);
@@ -1132,10 +1192,10 @@ class ChunkGatedDeltaRule {
   // g_cumsum[j]).
   __aicore__ inline void PrepareDecayAndExp(uint32_t chunkLen) {
     uint32_t cs = chunkSize_;
+    // All operations below are PIPE_V; in-order issue makes same-pipe barriers
+    // redundant, so they are omitted (the trailing V->S publication is kept).
     Muls(gCumsumFp32, gCumsumFp32, 1.0f, chunkLen);
-    PipeBarrier<PIPE_V>();
     Exp(expGCumFp32, gCumsumFp32, chunkLen);
-    PipeBarrier<PIPE_V>();
 
     // g is a log-decay and its prefix sum can easily be below -100 for real
     // Qwen activations. Factoring exp(g_i - g_j) into exp(g_i)*exp(-g_j)
@@ -1146,27 +1206,22 @@ class ChunkGatedDeltaRule {
     UnaryRepeatParams rowBroadcastParams{1, 1, rowStride, 0};
     Muls(decayMaskFp32, gCumsumFp32, -1.0f, static_cast<uint64_t>(chunkLen), static_cast<uint8_t>(chunkLen),
          rowBroadcastParams);
-    PipeBarrier<PIPE_V>();
 
     LocalTensor<float> gBlocks = chunkVFp32;
     uint8_t brcbRepeats = static_cast<uint8_t>(Ceil(chunkLen, FP32_NUM_PER_BLOCK));
     Brcb(gBlocks, gCumsumFp32, brcbRepeats, BrcbRepeatParams{1, 8});
-    PipeBarrier<PIPE_V>();
     BinaryRepeatParams rowAddParams{1, 1, 0, rowStride, rowStride, 1};
     Add(decayMaskFp32, decayMaskFp32, gBlocks, static_cast<uint64_t>(chunkLen), static_cast<uint8_t>(chunkLen),
         rowAddParams);
-    PipeBarrier<PIPE_V>();
 
     UnaryRepeatParams rowExpParams{1, 1, rowStride, rowStride};
     Exp(decayMaskFp32, decayMaskFp32, static_cast<uint64_t>(chunkLen), static_cast<uint8_t>(chunkLen), rowExpParams);
-    PipeBarrier<PIPE_V>();
     // Clear the upper triangle after Exp so it stays exactly zero (clearing
     // before Exp would make it exp(0)=1 and every consumer would have to mask
     // again). The raw attention products are then already lower-triangular.
     for (uint32_t row = 0; row + 1 < chunkLen; ++row) {
       Duplicate(decayMaskFp32[row * cs + row + 1], 0.0f, chunkLen - row - 1);
     }
-    PipeBarrier<PIPE_V>();
     TQueSync<PIPE_V, PIPE_S> decaySync;
     decaySync.SetFlag(0);
     decaySync.WaitFlag(0);
@@ -1198,12 +1253,16 @@ class ChunkGatedDeltaRule {
   __aicore__ inline void ComputeAttnMatrix(uint64_t qkHead, int32_t t_start, uint32_t chunkLen) {
     uint32_t cs = chunkSize_;
     if constexpr (kSpecializedDk != 0) {
-      if (likely(realK_ <= kSpecializedDk && chunkLen == kCubeFastPathChunkLen && vStepAligned_ >= kSpecializedDk &&
-                 CanCacheAttnQuery(chunkLen))) {
+      // keyCacheValid_ was just published by the StageAttnKeyOperands call that
+      // precedes this function; require it so the Cube path can never read a
+      // cache slot this chunk did not write.
+      if (likely(CanUseCubeAttnPath(chunkLen) && keyCacheValid_ != 0)) {
         ComputeAttnProductsCube<kSpecializedDk>();
         ComputeRecursiveAttn(chunkScoresFp32, chunkLen, cs);
-        for (uint32_t i = 0; i < chunkLen; i++) {
-          chunkScoresFp32.SetValue(i * cs + i, 1.0f);
+        if (!InverseDiagonalIsIdentity(chunkLen)) {
+          for (uint32_t i = 0; i < chunkLen; i++) {
+            chunkScoresFp32.SetValue(i * cs + i, 1.0f);
+          }
         }
         return;
       }
@@ -1214,10 +1273,18 @@ class ChunkGatedDeltaRule {
         chunkScoresFp32.SetValue(i * cs + jj, -dot * decayMaskFp32.GetValue(i * cs + jj));
       }
     }
+    // The scores above are built by Scalar stores while the recursive solve reads
+    // them on the Vector pipe; Scalar->Vector must be published explicitly.
+    TQueSync<PIPE_S, PIPE_V> scoreBuildToVector;
+    scoreBuildToVector.SetFlag(0);
+    scoreBuildToVector.WaitFlag(0);
     ComputeRecursiveAttn(chunkScoresFp32, chunkLen, cs);
     for (uint32_t i = 0; i < chunkLen; i++) {
       chunkScoresFp32.SetValue(i * cs + i, 1.0f);
     }
+    TQueSync<PIPE_S, PIPE_V> identityToVector;
+    identityToVector.SetFlag(0);
+    identityToVector.WaitFlag(0);
     if (CanCacheAttnQuery(chunkLen)) {
       for (uint32_t i = 0; i < chunkLen; i++) {
         LocalTensor<float> queryRow = chunkAttnOutFp32[i * alignK_];
@@ -1245,6 +1312,10 @@ class ChunkGatedDeltaRule {
         }
       }
     }
+    // attn_i was stored into decayMaskFp32 by Scalar; publish it to Vector.
+    TQueSync<PIPE_S, PIPE_V> attnInterToVector;
+    attnInterToVector.SetFlag(0);
+    attnInterToVector.WaitFlag(0);
   }
 
   // Batch the two dense attention products on Cube while K^T remains resident
@@ -1260,18 +1331,11 @@ class ChunkGatedDeltaRule {
     constexpr uint32_t kAElements = kMatmulM * kMatmulK;
     constexpr uint32_t kBElements = kMatmulK * kMatmulN;
     constexpr uint32_t kCElements = kMatmulM * kMatmulN;
-    __gm__ uint8_t *stageBase = GetCubeStageBase(0);
-    GlobalTensor<half> aStageGm;
-    GlobalTensor<half> bStageGm;
-    GlobalTensor<half> nextAStageGm;
-    __gm__ uint8_t *nextStageBase = GetCubeStageBase(1);
-    aStageGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(stageBase), kAElements);
-    bStageGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(stageBase + kAElements * sizeof(half)), kBElements);
-    nextAStageGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(nextStageBase), kAElements);
-
-    // K / K^T were pre-staged by StageAttnKeyOperands.
-    // Q is exact FP16, so a plain cast copy is exact (no residual needed).
-    StageHalf(chunkAttnOutFp32, nextAStageGm, kAElements);
+    // Both A operands (K and Q, exact FP16) are staged from UB straight into
+    // the L1 NZ tile: on dav_m200 Nd2Nz is a software GM->UB->L1 emulation, so
+    // the GM round trip is pure overhead. Q is exact FP16, so a plain cast copy
+    // is exact (no residual needed) and it stays in chunkAttnOutFp32 until the
+    // second product needs it.
     PipeBarrier<PIPE_ALL>();
 
     LocalMemAllocator<AscendC::Hardware::L1> l1Allocator;
@@ -1284,10 +1348,23 @@ class ChunkGatedDeltaRule {
     LocalTensor<half> b2Local = l0bAllocator.Alloc<TPosition::B2, half>(kBElements);
     LocalTensor<float> c1Local = l0cAllocator.Alloc<TPosition::CO1, float>(kCElements);
 
-    DataCopy(b1Local, bStageGm, Nd2NzParams{1, kMatmulK, kMatmulN, 0, kMatmulN, kMatmulK, 1, 0});
-    DataCopy(a1Local, aStageGm, Nd2NzParams{1, kMatmulM, kMatmulK, 0, kMatmulK, kMatmulM, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
+    // B = K^T: one contiguous GM->UB load of the per-core cached ND tile, then
+    // the same strided UB->L1 move used by every other staging site. The cache
+    // is the only producer of this tile (the former copy into the shared cube
+    // stage slot is gone), and ComputeAttnMatrix only reaches here after
+    // StageAttnKeyOperands published it for this chunk. chunkVFp32 is free here
+    // (its last use was PrepareDecayAndExp's g broadcast).
+    GlobalTensor<half> keyTSrc;
+    keyTSrc.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(GetKeyCacheBase()), kBElements);
+    LocalTensor<half> nzScratch = chunkVFp32.template ReinterpretCast<half>();
+    DataCopy(nzScratch, keyTSrc, kBElements);
+    event_t mte2ToMte3 = static_cast<event_t>(pipe_->FetchEventID(HardEvent::MTE2_MTE3));
+    SetFlag<HardEvent::MTE2_MTE3>(mte2ToMte3);
+    WaitFlag<HardEvent::MTE2_MTE3>(mte2ToMte3);
+    CopyUbNdToL1Nz<kMatmulK, kMatmulN>(b1Local, nzScratch);
+    StageHalfToL1<kMatmulM, kMatmulK>(chunkKFp32, a1Local);
+    SetFlag<HardEvent::MTE3_MTE1>(0);
+    WaitFlag<HardEvent::MTE3_MTE1>(0);
     for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
       LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
                LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
@@ -1301,13 +1378,14 @@ class ChunkGatedDeltaRule {
     Mmad(c1Local, a2Local, b2Local, MmadParams{kMatmulM, kMatmulN, kMatmulK, 0, false, true});
     CopyAttnCubeResult(c1Local, chunkScoresFp32);
 
-    // Reuse the resident K^T for the exact Q @ K^T product.
-    event_t stageReady = static_cast<event_t>(pipe_->FetchEventID(HardEvent::MTE3_MTE2));
-    SetFlag<HardEvent::MTE3_MTE2>(stageReady);
-    WaitFlag<HardEvent::MTE3_MTE2>(stageReady);
-    DataCopy(a1Local, nextAStageGm, Nd2NzParams{1, kMatmulM, kMatmulK, 0, kMatmulK, kMatmulM, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
+    // Reuse the resident K^T for the exact Q @ K^T product. a1Local was read
+    // by the first product's LoadData, so the MTE3 rewrite must wait for MTE1.
+    event_t mte1ToMte3 = static_cast<event_t>(pipe_->FetchEventID(HardEvent::MTE1_MTE3));
+    SetFlag<HardEvent::MTE1_MTE3>(mte1ToMte3);
+    WaitFlag<HardEvent::MTE1_MTE3>(mte1ToMte3);
+    StageHalfToL1<kMatmulM, kMatmulK>(chunkAttnOutFp32, a1Local);
+    SetFlag<HardEvent::MTE3_MTE1>(0);
+    WaitFlag<HardEvent::MTE3_MTE1>(0);
     for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
       LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
                LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
@@ -1334,21 +1412,21 @@ class ChunkGatedDeltaRule {
     constexpr uint32_t kCElements = kMatmulM * kMatmulN;
     LocalTensor<float> betaBlocks = chunkVFp32;
     uint8_t brcbRepeats = static_cast<uint8_t>(Ceil(kMatmulM, FP32_NUM_PER_BLOCK));
+    // Every operation below is PIPE_V and executes in issue order, so the
+    // same-pipe barriers between them are redundant: only the final V->S
+    // publication is required.
     Brcb(betaBlocks, betaFp32, brcbRepeats, BrcbRepeatParams{1, 8});
-    PipeBarrier<PIPE_V>();
+    // scores = -(raw * beta_row * decay): the negation is folded into the 64-entry
+    // beta broadcast instead of a 4096-element Muls (sign flip is exact).
+    Muls(betaBlocks, betaBlocks, -1.0f, static_cast<uint64_t>(kMatmulM) * FP32_NUM_PER_BLOCK);
     uint8_t rowStride = static_cast<uint8_t>(kMatmulN / FP32_NUM_PER_BLOCK);
     BinaryRepeatParams rowMulParams{1, 1, 0, rowStride, rowStride, 1};
     Mul(chunkScoresFp32, chunkScoresFp32, betaBlocks, static_cast<uint64_t>(kMatmulN), static_cast<uint8_t>(kMatmulM),
         rowMulParams);
-    PipeBarrier<PIPE_V>();
     Mul(chunkScoresFp32, chunkScoresFp32, decayMaskFp32, kCElements);
-    PipeBarrier<PIPE_V>();
-    Muls(chunkScoresFp32, chunkScoresFp32, -1.0f, kCElements);
     // attn_i is consumed in place from decayMaskFp32 downstream.
     Mul(decayMaskFp32, chunkAttnOutFp32, decayMaskFp32, kCElements);
-    PipeBarrier<PIPE_V>();
     Muls(decayMaskFp32, decayMaskFp32, scale_, kCElements);
-    PipeBarrier<PIPE_V>();
     TQueSync<PIPE_V, PIPE_S> attentionSync;
     attentionSync.SetFlag(0);
     attentionSync.WaitFlag(0);
@@ -1366,14 +1444,7 @@ class ChunkGatedDeltaRule {
     cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
     CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
     PipeBarrier<PIPE_ALL>();
-    constexpr uint16_t kNdBlockLen = kNzFractalDim * sizeof(float) / 32;
-    constexpr uint16_t kNzSrcStride =
-      (kMatmulM / kNzFractalDim * kNzFractalDim * kNzFractalDim - kNzFractalDim) * sizeof(float) / 32;
-    DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim), kNdBlockLen, kNzSrcStride, 0};
-    for (uint32_t row = 0; row < kMatmulM; ++row) {
-      DataCopy(dst[row * kMatmulN], cNz[row * kNzFractalDim], nzToNdParams);
-    }
-    PipeBarrier<PIPE_ALL>();
+    NzTileToNd<kMatmulM, kMatmulN>(dst, cNz);
   }
 
   // Phase 5: k_cumdecay = attn @ (k_beta * exp(g_cumsum)); result stored back into chunkKFp32.
@@ -1404,6 +1475,11 @@ class ChunkGatedDeltaRule {
         return;
       }
     }
+    // attn (chunkScoresFp32) was published by Scalar stores; the Cube variant
+    // already carries this guard, the Vector path needs it too.
+    TQueSync<PIPE_S, PIPE_V> scoresToVector;
+    scoresToVector.SetFlag(0);
+    scoresToVector.WaitFlag(0);
     for (uint32_t i = 0; i < chunkLen; i++) {
       LocalTensor<float> outRow = chunkKFp32[i * alignK_];
       Duplicate(outRow, 0.0f, realK_);
@@ -1428,18 +1504,6 @@ class ChunkGatedDeltaRule {
     constexpr uint32_t kAElements = kMatmulM * kMatmulK;
     constexpr uint32_t kBElements = kMatmulK * kMatmulN;
     constexpr uint32_t kCElements = kMatmulM * kMatmulN;
-    __gm__ uint8_t *stageBase = GetCubeStageBase(0);
-    GlobalTensor<half> aStageGm;
-    GlobalTensor<half> bStageGm;
-    GlobalTensor<half> aResidualStageGm;
-    // Stage the attention hi/lo pair at the same GM offsets the V-tile
-    // product uses, so that product can consume it without re-staging.
-    constexpr uint32_t kValueAElements = kMatmulM * kMatmulN;
-    constexpr uint32_t kValueBElements = kMatmulN * kMatmulN;
-    aStageGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(stageBase), kAElements);
-    bStageGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(stageBase + kAElements * sizeof(half)), kBElements);
-    aResidualStageGm.SetGlobalBuffer(
-      reinterpret_cast<__gm__ half *>(stageBase + (kValueAElements + kValueBElements) * sizeof(half)), kAElements);
 
     TQueSync<PIPE_S, PIPE_V> recursiveToVector;
     recursiveToVector.SetFlag(0);
@@ -1447,24 +1511,22 @@ class ChunkGatedDeltaRule {
     // (I-A)^-1 is lower triangular by construction: the upper triangle was
     // zeroed before the inverse and the diagonal is set to 1 afterwards, so no
     // extra mask/copy is needed before staging the attention operand.
-    StageHalfWithResidual(chunkScoresFp32, chunkVFp32, aStageGm, aResidualStageGm, kAElements);
-    attnStaged_ = 1;
-    StageHalf(kCumdecayFp32, bStageGm, kBElements);
-    PipeBarrier<PIPE_ALL>();
-
     LocalMemAllocator<AscendC::Hardware::L1> l1Allocator;
     LocalMemAllocator<AscendC::Hardware::L0A> l0aAllocator;
     LocalMemAllocator<AscendC::Hardware::L0B> l0bAllocator;
     LocalMemAllocator<AscendC::Hardware::L0C> l0cAllocator;
     LocalTensor<half> a1Local = l1Allocator.Alloc<TPosition::A1, half>(kAElements);
+    LocalTensor<half> aLoLocal = l1Allocator.Alloc<TPosition::A1, half>(kAElements);
     LocalTensor<half> b1Local = l1Allocator.Alloc<TPosition::B1, half>(kBElements);
     LocalTensor<half> a2Local = l0aAllocator.Alloc<TPosition::A2, half>(kAElements);
     LocalTensor<half> b2Local = l0bAllocator.Alloc<TPosition::B2, half>(kBElements);
     LocalTensor<float> c1Local = l0cAllocator.Alloc<TPosition::CO1, float>(kCElements);
-    DataCopy(a1Local, aStageGm, Nd2NzParams{1, kMatmulM, kMatmulK, 0, kMatmulK, kMatmulM, 1, 0});
-    DataCopy(b1Local, bStageGm, Nd2NzParams{1, kMatmulK, kMatmulN, 0, kMatmulN, kMatmulK, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
+    StageHalfWithResidualToL1<kMatmulM, kMatmulK>(chunkScoresFp32, chunkVFp32, a1Local, aLoLocal);
+    StageHalfToL1<kMatmulK, kMatmulN>(kCumdecayFp32, b1Local);
+    // The attention operand is no longer published through GM, so the V-tile
+    // product re-stages it from chunkScoresFp32 instead of reusing a GM copy.
+    SetFlag<HardEvent::MTE3_MTE1>(0);
+    WaitFlag<HardEvent::MTE3_MTE1>(0);
     for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
       LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
                LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
@@ -1478,11 +1540,8 @@ class ChunkGatedDeltaRule {
     Mmad(c1Local, a2Local, b2Local, MmadParams{kMatmulM, kMatmulN, kMatmulK, 0, false, true});
     SetFlag<HardEvent::M_MTE1>(0);
     WaitFlag<HardEvent::M_MTE1>(0);
-    DataCopy(a1Local, aResidualStageGm, Nd2NzParams{1, kMatmulM, kMatmulK, 0, kMatmulK, kMatmulM, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
     for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
-      LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
+      LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], aLoLocal[mBlock * kNzFractalRowBytes / sizeof(half)],
                LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
@@ -1497,14 +1556,7 @@ class ChunkGatedDeltaRule {
     cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
     CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
     PipeBarrier<PIPE_ALL>();
-    constexpr uint16_t kNdBlockLen = kNzFractalDim * sizeof(float) / 32;
-    constexpr uint16_t kNzSrcStride =
-      (kMatmulM / kNzFractalDim * kNzFractalDim * kNzFractalDim - kNzFractalDim) * sizeof(float) / 32;
-    DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim), kNdBlockLen, kNzSrcStride, 0};
-    for (uint32_t row = 0; row < kMatmulM; ++row) {
-      DataCopy(chunkKFp32[row * kMatmulN], cNz[row * 16], nzToNdParams);
-    }
-    PipeBarrier<PIPE_ALL>();
+    NzTileToNd<kMatmulM, kMatmulN>(chunkKFp32, cNz);
   }
 
   // ---- Phase 6: per v-tile processing (attn matrix and state tile overlap) ----
@@ -1523,7 +1575,7 @@ class ChunkGatedDeltaRule {
                                          uint32_t avFp32, uint64_t stateBaseOffset, uint64_t workspaceStateBaseOffset,
                                          uint32_t c, bool isLastChunk, uint32_t v_i, uint32_t curV) {
     LoadVBeta(t_start, head_i, chunkLen, v_i, curV, avFp32);
-    bool useFusedCubeFastPath = IsFusedValueOutputCubeFastPath(chunkLen, avFp32);
+    bool useFusedCubeFastPath = IsCubeFastPath(chunkLen, avFp32);
     if (likely(useFusedCubeFastPath)) {
       ComputeValueAndVNewCubeDispatch(stateBaseOffset, workspaceStateBaseOffset, v_i, curV, c, t_start, qkHead);
     } else {
@@ -1564,9 +1616,12 @@ class ChunkGatedDeltaRule {
 
       // Zero the aligned destination rows first, then let MTE2 write valid V
       // elements directly at the final row stride. This makes the subsequent
-      // FP16->FP32 Cast contiguous and removes one Cast launch per row.
-      Duplicate(valueLocal, static_cast<inType>(0), chunkLen * avFp32);
-      PipeBarrier<PIPE_V>();
+      // FP16->FP32 Cast contiguous and removes one Cast launch per row. A full
+      // tile is written completely by the DMA, so the fill is skipped there.
+      if (curV != avFp32 || chunkLen != chunkSize_) {
+        Duplicate(valueLocal, static_cast<inType>(0), chunkLen * avFp32);
+        PipeBarrier<PIPE_V>();
+      }
 
       event_t scalarToMte2 = static_cast<event_t>(pipe_->FetchEventID(HardEvent::S_MTE2));
       SetFlag<HardEvent::S_MTE2>(scalarToMte2);
@@ -1579,8 +1634,9 @@ class ChunkGatedDeltaRule {
       SetFlag<HardEvent::MTE2_V>(mte2ToVector);
       WaitFlag<HardEvent::MTE2_V>(mte2ToVector);
 
+      // Cast / Brcb / Mul are all PIPE_V on distinct buffers: issue order is
+      // the only dependency, so no same-pipe barrier is needed.
       Cast(chunkVFp32, valueLocal, RoundMode::CAST_NONE, chunkLen * avFp32);
-      PipeBarrier<PIPE_V>();
 
       // Broadcast one beta per row into 32-byte blocks and scale the complete
       // aligned V tile with high-dimensional Mul instructions. Padding stays
@@ -1588,7 +1644,6 @@ class ChunkGatedDeltaRule {
       LocalTensor<float> betaBlocks = chunkAttnOutFp32;
       uint8_t brcbRepeats = static_cast<uint8_t>(Ceil(chunkLen, FP32_NUM_PER_BLOCK));
       Brcb(betaBlocks, betaFp32, brcbRepeats, BrcbRepeatParams{1, 8});
-      PipeBarrier<PIPE_V>();
       uint8_t rowStride = static_cast<uint8_t>(avFp32 / FP32_NUM_PER_BLOCK);
       BinaryRepeatParams mulParams{1, 1, 0, rowStride, rowStride, 1};
       uint32_t vOffset = 0;
@@ -1600,7 +1655,6 @@ class ChunkGatedDeltaRule {
         Mul(chunkVFp32[vOffset], chunkVFp32[vOffset], betaBlocks, static_cast<uint64_t>(avFp32 - vOffset),
             static_cast<uint8_t>(chunkLen), mulParams);
       }
-      PipeBarrier<PIPE_V>();
       TQueSync<PIPE_V, PIPE_S> valueSync;
       valueSync.SetFlag(0);
       valueSync.WaitFlag(0);
@@ -1621,12 +1675,9 @@ class ChunkGatedDeltaRule {
   }
 
   // Step 2: value_new_tile = attn @ v_beta_tile (lower-tri attn, sum k <= i) ->
-  // chunkAttnOutFp32.
+  // chunkAttnOutFp32. Every IsCubeFastPath shape fuses steps 2 and 4 into one
+  // Cube product (ComputeValueAndVNewCube), so only this Vector form is reachable.
   __aicore__ inline void ComputeValueNew(uint32_t chunkLen, uint32_t curV, uint32_t avFp32) {
-    if (likely(IsCubeFastPath(chunkLen, avFp32))) {
-      ComputeValueNewCube();
-      return;
-    }
     (void)curV;
     Duplicate(chunkAttnOutFp32, 0.0f, chunkLen * avFp32);
     PipeBarrier<PIPE_V>();
@@ -1643,8 +1694,13 @@ class ChunkGatedDeltaRule {
   // Step 3: load state tile into stateInFp32 (overlaps chunkScoresFp32 — must run after Step 2).
   __aicore__ inline void LoadStateTile(uint64_t stateBaseOffset, uint64_t workspaceStateBaseOffset, uint32_t v_i,
                                        uint32_t curV, uint32_t c) {
-    Duplicate(stateInFp32, 0.0f, stateStrideK_ * vStepAligned_);
-    PipeBarrier<PIPE_V>();
+    // The zero fill only exists to pad a partial V tile / padded K rows. When the
+    // load below covers the complete [stateStrideK_, vStepAligned_] tile it is
+    // dead work, so it is skipped (bit-identical result).
+    if (curV != vStepAligned_ || realK_ != stateStrideK_) {
+      Duplicate(stateInFp32, 0.0f, stateStrideK_ * vStepAligned_);
+      PipeBarrier<PIPE_V>();
+    }
     if (c > 0) {
       LoadStateFromWorkspace(workspaceStateBaseOffset, v_i, curV);
       return;
@@ -1760,11 +1816,8 @@ class ChunkGatedDeltaRule {
   }
 
   // Step 4: v_new = value_new - (k_cumdecay @ state) -> chunkVFp32 (reused).
+  // See ComputeValueNew: the fused Cube product owns every IsCubeFastPath shape.
   __aicore__ inline void ComputeVNew(uint32_t chunkLen, uint32_t avFp32) {
-    if (likely(IsCubeFastPath(chunkLen, avFp32))) {
-      ComputeVNewCube(chunkLen, avFp32);
-      return;
-    }
     for (uint32_t i = 0; i < chunkLen; i++) {
       LocalTensor<float> vpRow = chunkVFp32[i * avFp32];
       Duplicate(vpRow, 0.0f, vStepAligned_);
@@ -1782,38 +1835,66 @@ class ChunkGatedDeltaRule {
     }
   }
 
-  __aicore__ inline void StageHalfWithResidual(LocalTensor<float> src, LocalTensor<float> scratch,
-                                               GlobalTensor<half> hiStageGm, GlobalTensor<half> loStageGm,
-                                               uint32_t elementCount) {
+  // Copy a row-major FP16 [kRows, kCols] UB tile to L1 in the exact NZ (fractal)
+  // byte order that Nd2Nz produced, without the GM round trip.
+  //
+  // NZ places element (r, c) at (c/16 * kRows + r) * 16 + c%16 halves, i.e. one
+  // 16x16 fractal is 16 contiguous 32-byte rows. For a fixed 16-column group the
+  // destination is therefore kRows contiguous 32-byte blocks while the source
+  // reads one 32-byte block per row with a (kCols/16 - 1) block gap. On dav_m200
+  // Nd2Nz is a software loop (GM->UB, UB transpose, nValue 32-byte UB->L1
+  // bursts), so replacing it with this direct strided UB->L1 copy is
+  // byte-identical by construction and removes the GM + transpose stages.
+  template <uint32_t kRows, uint32_t kCols>
+  __aicore__ inline void CopyUbNdToL1Nz(LocalTensor<half> dstL1, LocalTensor<half> srcUb) {
+    static_assert(kRows % kNzFractalDim == 0 && kCols % kNzFractalDim == 0,
+                  "NZ staging requires 16-aligned tile geometry");
+    DataCopyParams nzParams{static_cast<uint16_t>(kRows), 1, static_cast<uint16_t>(kCols / kNzFractalDim - 1), 0};
+    for (uint32_t colBlock = 0; colBlock < kCols / kNzFractalDim; ++colBlock) {
+      DataCopy(dstL1[colBlock * kRows * kNzFractalDim], srcUb[colBlock * kNzFractalDim], nzParams);
+    }
+  }
+
+  // Cast a row-major FP32 [kRows, kCols] tile to FP16 in UB and publish it
+  // straight into the L1 NZ tile (byte-identical to a GM round trip through
+  // Nd2Nz, without the GM staging copy).
+  template <uint32_t kRows, uint32_t kCols>
+  __aicore__ inline void StageHalfToL1(LocalTensor<float> src, LocalTensor<half> dstL1) {
     LocalTensor<half> stageLocal = stateOutQueue_.AllocTensor<half>();
-    Cast(stageLocal, src, RoundMode::CAST_NONE, elementCount);
+    Cast(stageLocal, src, RoundMode::CAST_NONE, kRows * kCols);
     PipeBarrier<PIPE_V>();
     stateOutQueue_.EnQue<half>(stageLocal);
     stageLocal = stateOutQueue_.DeQue<half>();
-    DataCopy(hiStageGm, stageLocal, elementCount);
+    CopyUbNdToL1Nz<kRows, kCols>(dstL1, stageLocal);
+    stateOutQueue_.FreeTensor(stageLocal);
+  }
+
+  // Two-term compensated variant of StageHalfToL1: the same hi/lo split as the
+  // GM-staging form it replaced, but both halves are published straight into two
+  // distinct L1 NZ tiles instead of the GM staging slots.
+  template <uint32_t kRows, uint32_t kCols>
+  __aicore__ inline void StageHalfWithResidualToL1(LocalTensor<float> src, LocalTensor<float> scratch,
+                                                   LocalTensor<half> hiL1, LocalTensor<half> loL1) {
+    constexpr uint32_t kCount = kRows * kCols;
+    LocalTensor<half> stageLocal = stateOutQueue_.AllocTensor<half>();
+    Cast(stageLocal, src, RoundMode::CAST_NONE, kCount);
+    PipeBarrier<PIPE_V>();
+    stateOutQueue_.EnQue<half>(stageLocal);
+    stageLocal = stateOutQueue_.DeQue<half>();
+    CopyUbNdToL1Nz<kRows, kCols>(hiL1, stageLocal);
 
     event_t mte3ToVector = static_cast<event_t>(pipe_->FetchEventID(HardEvent::MTE3_V));
     SetFlag<HardEvent::MTE3_V>(mte3ToVector);
     WaitFlag<HardEvent::MTE3_V>(mte3ToVector);
-    Cast(scratch, stageLocal, RoundMode::CAST_NONE, elementCount);
+    Cast(scratch, stageLocal, RoundMode::CAST_NONE, kCount);
     PipeBarrier<PIPE_V>();
-    Sub(scratch, src, scratch, elementCount);
+    Sub(scratch, src, scratch, kCount);
     PipeBarrier<PIPE_V>();
-    Cast(stageLocal, scratch, RoundMode::CAST_NONE, elementCount);
-    PipeBarrier<PIPE_V>();
-    stateOutQueue_.EnQue<half>(stageLocal);
-    stageLocal = stateOutQueue_.DeQue<half>();
-    DataCopy(loStageGm, stageLocal, elementCount);
-    stateOutQueue_.FreeTensor(stageLocal);
-  }
-
-  __aicore__ inline void StageHalf(LocalTensor<float> src, GlobalTensor<half> stageGm, uint32_t elementCount) {
-    LocalTensor<half> stageLocal = stateOutQueue_.AllocTensor<half>();
-    Cast(stageLocal, src, RoundMode::CAST_NONE, elementCount);
+    Cast(stageLocal, scratch, RoundMode::CAST_NONE, kCount);
     PipeBarrier<PIPE_V>();
     stateOutQueue_.EnQue<half>(stageLocal);
     stageLocal = stateOutQueue_.DeQue<half>();
-    DataCopy(stageGm, stageLocal, elementCount);
+    CopyUbNdToL1Nz<kRows, kCols>(loL1, stageLocal);
     stateOutQueue_.FreeTensor(stageLocal);
   }
 
@@ -1842,46 +1923,31 @@ class ChunkGatedDeltaRule {
     constexpr uint32_t kAStateElements = kMatmulM * kStateK;
     constexpr uint32_t kBStateElements = kStateK * kMatmulN;
     constexpr uint32_t kCElements = kMatmulM * kMatmulN;
-    __gm__ uint8_t *stageBase = GetCubeStageBase(0);
 
-    GlobalTensor<half> aStageGm;
-    GlobalTensor<half> bStageGm;
-    GlobalTensor<half> aResidualStageGm;
-    aStageGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(stageBase), kAStateElements);
-    bStageGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(stageBase + kAStateElements * sizeof(half)),
-                             kBStateElements);
-    aResidualStageGm.SetGlobalBuffer(
-      reinterpret_cast<__gm__ half *>(stageBase + (kAStateElements + kBStateElements) * sizeof(half)), kAStateElements);
-
-    // lower(attn) was already staged by ComputeKCumdecayCube in this layout;
-    // only rebuild it when that staging was skipped (non-Cube path).
-    if (attnStaged_ == 0) {
-      Muls(kCumdecayFp32, chunkScoresFp32, 1.0f, kAAttnElements);
-      PipeBarrier<PIPE_V>();
-      for (uint32_t row = 0; row + 1 < kMatmulM; ++row) {
-        Duplicate(kCumdecayFp32[row * kAttnK + row + 1], 0.0f, kAttnK - row - 1);
-      }
-      PipeBarrier<PIPE_V>();
-      StageHalfWithResidual(kCumdecayFp32, chunkAttnOutFp32, aStageGm, aResidualStageGm, kAAttnElements);
+    // lower(attn) is still live in chunkScoresFp32: LoadStateTile only clobbers
+    // that buffer later, for the state product. Stage it straight from UB.
+    // Muls and the strict-lower Duplicate fill are both PIPE_V, so the barrier
+    // between them only duplicated issue-order semantics.
+    Muls(kCumdecayFp32, chunkScoresFp32, 1.0f, kAAttnElements);
+    for (uint32_t row = 0; row + 1 < kMatmulM; ++row) {
+      Duplicate(kCumdecayFp32[row * kAttnK + row + 1], 0.0f, kAttnK - row - 1);
     }
-    attnStaged_ = 0;
-    StageHalf(chunkVFp32, bStageGm, kBAttnElements);
-    PipeBarrier<PIPE_ALL>();
 
     LocalMemAllocator<AscendC::Hardware::L1> l1Allocator;
     LocalMemAllocator<AscendC::Hardware::L0A> l0aAllocator;
     LocalMemAllocator<AscendC::Hardware::L0B> l0bAllocator;
     LocalMemAllocator<AscendC::Hardware::L0C> l0cAllocator;
     LocalTensor<half> a1Local = l1Allocator.Alloc<TPosition::A1, half>(kAStateElements);
+    LocalTensor<half> aLoLocal = l1Allocator.Alloc<TPosition::A1, half>(kAStateElements);
     LocalTensor<half> b1Local = l1Allocator.Alloc<TPosition::B1, half>(kBStateElements);
     LocalTensor<half> a2Local = l0aAllocator.Alloc<TPosition::A2, half>(kAStateElements);
     LocalTensor<half> b2Local = l0bAllocator.Alloc<TPosition::B2, half>(kBStateElements);
     LocalTensor<float> c1Local = l0cAllocator.Alloc<TPosition::CO1, float>(kCElements);
 
-    DataCopy(a1Local, aStageGm, Nd2NzParams{1, kMatmulM, kAttnK, 0, kAttnK, kMatmulM, 1, 0});
-    DataCopy(b1Local, bStageGm, Nd2NzParams{1, kAttnK, kMatmulN, 0, kMatmulN, kAttnK, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
+    StageHalfWithResidualToL1<kMatmulM, kAttnK>(kCumdecayFp32, chunkAttnOutFp32, a1Local, aLoLocal);
+    StageHalfToL1<kAttnK, kMatmulN>(chunkVFp32, b1Local);
+    SetFlag<HardEvent::MTE3_MTE1>(0);
+    WaitFlag<HardEvent::MTE3_MTE1>(0);
     for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
       LoadData(a2Local[mBlock * kAttnK * 16], a1Local[mBlock * 512 / sizeof(half)],
                LoadData2DParams{0, kAttnK / 16, kMatmulM / 16, 0, 0, false, 0});
@@ -1896,11 +1962,8 @@ class ChunkGatedDeltaRule {
 
     SetFlag<HardEvent::M_MTE1>(0);
     WaitFlag<HardEvent::M_MTE1>(0);
-    DataCopy(a1Local, aResidualStageGm, Nd2NzParams{1, kMatmulM, kAttnK, 0, kAttnK, kMatmulM, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
     for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
-      LoadData(a2Local[mBlock * kAttnK * 16], a1Local[mBlock * 512 / sizeof(half)],
+      LoadData(a2Local[mBlock * kAttnK * 16], aLoLocal[mBlock * 512 / sizeof(half)],
                LoadData2DParams{0, kAttnK / 16, kMatmulM / 16, 0, 0, false, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
@@ -1913,15 +1976,11 @@ class ChunkGatedDeltaRule {
     WaitFlag<HardEvent::M_MTE1>(0);
     LoadStateTile(stateBaseOffset, workspaceStateBaseOffset, v_i, curV, c);
     Muls(chunkKFp32, chunkKFp32, -1.0f, kAStateElements);
-    PipeBarrier<PIPE_V>();
-    StageHalfWithResidual(chunkKFp32, kCumdecayFp32, aStageGm, aResidualStageGm, kAStateElements);
-    StageHalf(stateInFp32, bStageGm, kBStateElements);
-    PipeBarrier<PIPE_ALL>();
+    StageHalfWithResidualToL1<kMatmulM, kStateK>(chunkKFp32, kCumdecayFp32, a1Local, aLoLocal);
+    StageHalfToL1<kStateK, kMatmulN>(stateInFp32, b1Local);
+    SetFlag<HardEvent::MTE3_MTE1>(0);
+    WaitFlag<HardEvent::MTE3_MTE1>(0);
 
-    DataCopy(a1Local, aStageGm, Nd2NzParams{1, kMatmulM, kStateK, 0, kStateK, kMatmulM, 1, 0});
-    DataCopy(b1Local, bStageGm, Nd2NzParams{1, kStateK, kMatmulN, 0, kMatmulN, kStateK, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
     for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
       LoadData(a2Local[mBlock * kStateK * 16], a1Local[mBlock * 512 / sizeof(half)],
                LoadData2DParams{0, kStateK / 16, kMatmulM / 16, 0, 0, false, 0});
@@ -1936,11 +1995,8 @@ class ChunkGatedDeltaRule {
 
     SetFlag<HardEvent::M_MTE1>(0);
     WaitFlag<HardEvent::M_MTE1>(0);
-    DataCopy(a1Local, aResidualStageGm, Nd2NzParams{1, kMatmulM, kStateK, 0, kStateK, kMatmulM, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
     for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
-      LoadData(a2Local[mBlock * kStateK * 16], a1Local[mBlock * 512 / sizeof(half)],
+      LoadData(a2Local[mBlock * kStateK * 16], aLoLocal[mBlock * 512 / sizeof(half)],
                LoadData2DParams{0, kStateK / 16, kMatmulM / 16, 0, 0, false, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
@@ -1957,14 +2013,7 @@ class ChunkGatedDeltaRule {
     CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
     PipeBarrier<PIPE_ALL>();
 
-    constexpr uint16_t kNdBlockLen = kNzFractalDim * sizeof(float) / 32;
-    constexpr uint16_t kNzSrcStride =
-      (kMatmulM / kNzFractalDim * kNzFractalDim * kNzFractalDim - kNzFractalDim) * sizeof(float) / 32;
-    DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim), kNdBlockLen, kNzSrcStride, 0};
-    for (uint32_t row = 0; row < kMatmulM; ++row) {
-      DataCopy(chunkVFp32[row * kMatmulN], cNz[row * kNzFractalDim], nzToNdParams);
-    }
-    PipeBarrier<PIPE_ALL>();
+    NzTileToNd<kMatmulM, kMatmulN>(chunkVFp32, cNz);
 
     // ---- Output stage fused here: out = (Q*scale*exp(g)) @ state +
     // lower(attn_i) @ v_new. The state B staged above is still resident in
@@ -1975,13 +2024,12 @@ class ChunkGatedDeltaRule {
     uint64_t queryOffset = (static_cast<uint64_t>(t_start) * NK_ + qkHead) * realK_;
     LoadPaddedRows(kCumdecayFp32, queryLocal, queryGm_, queryOffset, kMatmulM, NK_ * realK_);
     // Same per-row scale * exp(g_i), broadcast via Brcb (bit-identical).
+    // Muls / Brcb / Mul are all PIPE_V, so no same-pipe barrier is needed.
     Muls(deltaFp32, expGCumFp32, scale_, kMatmulM);
-    PipeBarrier<PIPE_V>();
     {
       LocalTensor<float> qScaleBlocks = chunkAttnOutFp32;
       uint8_t qBrcbRepeats = static_cast<uint8_t>(Ceil(kMatmulM, FP32_NUM_PER_BLOCK));
       Brcb(qScaleBlocks, deltaFp32, qBrcbRepeats, BrcbRepeatParams{1, 8});
-      PipeBarrier<PIPE_V>();
       uint8_t qRowStride = static_cast<uint8_t>(kStateK / FP32_NUM_PER_BLOCK);
       BinaryRepeatParams qMulParams{1, 1, 0, qRowStride, qRowStride, 1};
       uint32_t qOffset = 0;
@@ -1992,13 +2040,10 @@ class ChunkGatedDeltaRule {
         Mul(kCumdecayFp32[qOffset], kCumdecayFp32[qOffset], qScaleBlocks, kStateK - qOffset, kMatmulM, qMulParams);
       }
     }
-    PipeBarrier<PIPE_V>();
-    StageHalfWithResidual(kCumdecayFp32, chunkAttnOutFp32, aStageGm, aResidualStageGm, kAStateElements);
-    PipeBarrier<PIPE_ALL>();
+    StageHalfWithResidualToL1<kMatmulM, kStateK>(kCumdecayFp32, chunkAttnOutFp32, a1Local, aLoLocal);
+    SetFlag<HardEvent::MTE3_MTE1>(0);
+    WaitFlag<HardEvent::MTE3_MTE1>(0);
 
-    DataCopy(a1Local, aStageGm, Nd2NzParams{1, kMatmulM, kStateK, 0, kStateK, kMatmulM, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
     for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
       LoadData(a2Local[mBlock * kStateK * 16], a1Local[mBlock * 512 / sizeof(half)],
                LoadData2DParams{0, kStateK / 16, kMatmulM / 16, 0, 0, false, 0});
@@ -2009,11 +2054,8 @@ class ChunkGatedDeltaRule {
 
     SetFlag<HardEvent::M_MTE1>(0);
     WaitFlag<HardEvent::M_MTE1>(0);
-    DataCopy(a1Local, aResidualStageGm, Nd2NzParams{1, kMatmulM, kStateK, 0, kStateK, kMatmulM, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
     for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
-      LoadData(a2Local[mBlock * kStateK * 16], a1Local[mBlock * 512 / sizeof(half)],
+      LoadData(a2Local[mBlock * kStateK * 16], aLoLocal[mBlock * 512 / sizeof(half)],
                LoadData2DParams{0, kStateK / 16, kMatmulM / 16, 0, 0, false, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
@@ -2023,17 +2065,15 @@ class ChunkGatedDeltaRule {
     SetFlag<HardEvent::M_MTE1>(0);
     WaitFlag<HardEvent::M_MTE1>(0);
     // (I-A)^-1 is lower triangular by construction and attn_i's upper
-    // triangle is exactly zero, so no extra masking is needed here.
-    Muls(kCumdecayFp32, decayMaskFp32, 1.0f, kAAttnElements);
-    PipeBarrier<PIPE_V>();
-    StageHalfWithResidual(kCumdecayFp32, chunkAttnOutFp32, aStageGm, aResidualStageGm, kAAttnElements);
-    StageHalf(chunkVFp32, bStageGm, kBAttnElements);
-    PipeBarrier<PIPE_ALL>();
+    // triangle is exactly zero, so no extra masking is needed here. attn_i is
+    // staged straight out of decayMaskFp32; chunkAttnOutFp32 holds the dead
+    // Q-scale residual and serves as the residual scratch, which drops the
+    // former 16 KiB attn_i copy on the Vector pipe.
+    StageHalfWithResidualToL1<kMatmulM, kAttnK>(decayMaskFp32, chunkAttnOutFp32, a1Local, aLoLocal);
+    StageHalfToL1<kAttnK, kMatmulN>(chunkVFp32, b1Local);
+    SetFlag<HardEvent::MTE3_MTE1>(0);
+    WaitFlag<HardEvent::MTE3_MTE1>(0);
 
-    DataCopy(a1Local, aStageGm, Nd2NzParams{1, kMatmulM, kAttnK, 0, kAttnK, kMatmulM, 1, 0});
-    DataCopy(b1Local, bStageGm, Nd2NzParams{1, kAttnK, kMatmulN, 0, kMatmulN, kAttnK, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
     for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
       LoadData(a2Local[mBlock * kAttnK * 16], a1Local[mBlock * 512 / sizeof(half)],
                LoadData2DParams{0, kAttnK / 16, kMatmulM / 16, 0, 0, false, 0});
@@ -2048,11 +2088,8 @@ class ChunkGatedDeltaRule {
 
     SetFlag<HardEvent::M_MTE1>(0);
     WaitFlag<HardEvent::M_MTE1>(0);
-    DataCopy(a1Local, aResidualStageGm, Nd2NzParams{1, kMatmulM, kAttnK, 0, kAttnK, kMatmulM, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
     for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
-      LoadData(a2Local[mBlock * kAttnK * 16], a1Local[mBlock * 512 / sizeof(half)],
+      LoadData(a2Local[mBlock * kAttnK * 16], aLoLocal[mBlock * 512 / sizeof(half)],
                LoadData2DParams{0, kAttnK / 16, kMatmulM / 16, 0, 0, false, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
@@ -2063,196 +2100,7 @@ class ChunkGatedDeltaRule {
     WaitFlag<HardEvent::M_MTE1>(0);
     LocalTensor<float> cNzOut = kCumdecayFp32;
     CopyL0CToUb(cNzOut, c1Local, cCopyParams, cCopyEnhanced);
-    PipeBarrier<PIPE_ALL>();
-    for (uint32_t row = 0; row < kMatmulM; ++row) {
-      DataCopy(chunkAttnOutFp32[row * kMatmulN], cNzOut[row * kNzFractalDim], nzToNdParams);
-    }
-    PipeBarrier<PIPE_ALL>();
-  }
-
-  // Fixed-shape Step 2: value_new = lower(attn) @ v_beta. The old path
-  // launched one Axpy for every lower-triangle coefficient. Build the two
-  // regular matrices once and execute the complete 64x64x128 product on Cube.
-  __aicore__ inline void ComputeValueNewCube() {
-    constexpr uint32_t kMatmulM = 64;
-    constexpr uint32_t kMatmulK = 64;
-    constexpr uint32_t kMatmulN = 128;
-    constexpr uint32_t kAElements = kMatmulM * kMatmulK;
-    constexpr uint32_t kBElements = kMatmulK * kMatmulN;
-    constexpr uint32_t kCElements = kMatmulM * kMatmulN;
-    __gm__ uint8_t *stageBase = GetCubeStageBase(0);
-
-    GlobalTensor<half> aStageGm;
-    GlobalTensor<half> bStageGm;
-    GlobalTensor<half> aResidualStageGm;
-    aStageGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(stageBase), kAElements);
-    bStageGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(stageBase + kAElements * sizeof(half)), kBElements);
-    aResidualStageGm.SetGlobalBuffer(
-      reinterpret_cast<__gm__ half *>(stageBase + (kAElements + kBElements) * sizeof(half)), kAElements);
-
-    // The source buffer may contain values above the diagonal. Preserve the
-    // original k<=i semantics by clearing only that upper triangle.
-    Muls(kCumdecayFp32, chunkScoresFp32, 1.0f, kAElements);
-    PipeBarrier<PIPE_V>();
-    for (uint32_t row = 0; row + 1 < kMatmulM; ++row) {
-      Duplicate(kCumdecayFp32[row * kMatmulK + row + 1], 0.0f, kMatmulK - row - 1);
-    }
-    PipeBarrier<PIPE_V>();
-    StageHalfWithResidual(kCumdecayFp32, chunkAttnOutFp32, aStageGm, aResidualStageGm, kAElements);
-    StageHalf(chunkVFp32, bStageGm, kBElements);
-    PipeBarrier<PIPE_ALL>();
-
-    LocalMemAllocator<AscendC::Hardware::L1> l1Allocator;
-    LocalMemAllocator<AscendC::Hardware::L0A> l0aAllocator;
-    LocalMemAllocator<AscendC::Hardware::L0B> l0bAllocator;
-    LocalMemAllocator<AscendC::Hardware::L0C> l0cAllocator;
-    LocalTensor<half> a1Local = l1Allocator.Alloc<TPosition::A1, half>(kAElements);
-    LocalTensor<half> b1Local = l1Allocator.Alloc<TPosition::B1, half>(kBElements);
-    LocalTensor<half> a2Local = l0aAllocator.Alloc<TPosition::A2, half>(kAElements);
-    LocalTensor<half> b2Local = l0bAllocator.Alloc<TPosition::B2, half>(kBElements);
-    LocalTensor<float> c1Local = l0cAllocator.Alloc<TPosition::CO1, float>(kCElements);
-
-    DataCopy(a1Local, aStageGm, Nd2NzParams{1, kMatmulM, kMatmulK, 0, kMatmulK, kMatmulM, 1, 0});
-    DataCopy(b1Local, bStageGm, Nd2NzParams{1, kMatmulK, kMatmulN, 0, kMatmulN, kMatmulK, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
-      LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
-               LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
-    }
-    for (uint32_t kBlock = 0; kBlock < kMatmulK / kNzFractalDim; ++kBlock) {
-      LoadData(b2Local[kBlock * kMatmulN * kNzFractalDim], b1Local[kBlock * kNzFractalRowBytes / sizeof(half)],
-               LoadData2DParams{0, kMatmulN / kNzFractalDim, kMatmulK / kNzFractalDim, 0, 0, true, 0});
-    }
-    SetFlag<HardEvent::MTE1_M>(0);
-    WaitFlag<HardEvent::MTE1_M>(0);
-    Mmad(c1Local, a2Local, b2Local, MmadParams{kMatmulM, kMatmulN, kMatmulK, 0, false, true});
-
-    SetFlag<HardEvent::M_MTE1>(0);
-    WaitFlag<HardEvent::M_MTE1>(0);
-    DataCopy(a1Local, aResidualStageGm, Nd2NzParams{1, kMatmulM, kMatmulK, 0, kMatmulK, kMatmulM, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
-      LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
-               LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
-    }
-    SetFlag<HardEvent::MTE1_M>(0);
-    WaitFlag<HardEvent::MTE1_M>(0);
-    Mmad(c1Local, a2Local, b2Local, MmadParams{kMatmulM, kMatmulN, kMatmulK, 0, false, false});
-
-    SetFlag<HardEvent::M_MTE1>(0);
-    WaitFlag<HardEvent::M_MTE1>(0);
-    LocalTensor<float> cNz = kCumdecayFp32;
-    DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim),
-                               static_cast<uint16_t>(kMatmulM / kNzFractalDim), 0, 0};
-    DataCopyEnhancedParams cCopyEnhanced;
-    cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
-    CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
-    PipeBarrier<PIPE_ALL>();
-
-    constexpr uint16_t kNdBlockLen = kNzFractalDim * sizeof(float) / 32;
-    constexpr uint16_t kNzSrcStride =
-      (kMatmulM / kNzFractalDim * kNzFractalDim * kNzFractalDim - kNzFractalDim) * sizeof(float) / 32;
-    DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim), kNdBlockLen, kNzSrcStride, 0};
-    for (uint32_t row = 0; row < kMatmulM; ++row) {
-      DataCopy(chunkAttnOutFp32[row * kMatmulN], cNz[row * kNzFractalDim], nzToNdParams);
-    }
-    PipeBarrier<PIPE_ALL>();
-  }
-
-  __aicore__ inline void ComputeVNewCube(uint32_t chunkLen, uint32_t avFp32) {
-    constexpr uint32_t kMatmulM = 64;
-    constexpr uint32_t kMatmulK = 128;
-    constexpr uint32_t kMatmulN = 128;
-    constexpr uint32_t kAElements = kMatmulM * kMatmulK;
-    constexpr uint32_t kBElements = kMatmulK * kMatmulN;
-    constexpr uint32_t kCElements = kMatmulM * kMatmulN;
-    // The workspace stages A_hi, A_lo and B_hi. kAElements equals kCElements
-    // for this fixed fast path, but spelling out the actual contents avoids
-    // confusing the A residual buffer with an output-C buffer.
-    __gm__ uint8_t *stageBase = GetCubeStageBase(0);
-
-    GlobalTensor<half> aStageGm;
-    GlobalTensor<half> bStageGm;
-    GlobalTensor<half> aResidualStageGm;
-    aStageGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(stageBase), kAElements);
-    bStageGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(stageBase + kAElements * sizeof(half)), kBElements);
-    aResidualStageGm.SetGlobalBuffer(
-      reinterpret_cast<__gm__ half *>(stageBase + (kAElements + kBElements) * sizeof(half)), kAElements);
-
-    StageHalfWithResidual(chunkKFp32, kCumdecayFp32, aStageGm, aResidualStageGm, kAElements);
-    StageHalf(stateInFp32, bStageGm, kBElements);
-    PipeBarrier<PIPE_ALL>();
-
-    LocalMemAllocator<AscendC::Hardware::L1> l1Allocator;
-    LocalMemAllocator<AscendC::Hardware::L0A> l0aAllocator;
-    LocalMemAllocator<AscendC::Hardware::L0B> l0bAllocator;
-    LocalMemAllocator<AscendC::Hardware::L0C> l0cAllocator;
-    LocalTensor<half> a1Local = l1Allocator.Alloc<TPosition::A1, half>(kAElements);
-    LocalTensor<half> b1Local = l1Allocator.Alloc<TPosition::B1, half>(kBElements);
-    LocalTensor<half> a2Local = l0aAllocator.Alloc<TPosition::A2, half>(kAElements);
-    LocalTensor<half> b2Local = l0bAllocator.Alloc<TPosition::B2, half>(kBElements);
-    LocalTensor<float> c1Local = l0cAllocator.Alloc<TPosition::CO1, float>(kCElements);
-
-    DataCopy(a1Local, aStageGm, Nd2NzParams{1, kMatmulM, kMatmulK, 0, kMatmulK, kMatmulM, 1, 0});
-    DataCopy(b1Local, bStageGm, Nd2NzParams{1, kMatmulK, kMatmulN, 0, kMatmulN, kMatmulK, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
-      LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
-               LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
-    }
-    for (uint32_t kBlock = 0; kBlock < kMatmulK / kNzFractalDim; ++kBlock) {
-      LoadData(b2Local[kBlock * kMatmulN * kNzFractalDim], b1Local[kBlock * kNzFractalRowBytes / sizeof(half)],
-               LoadData2DParams{0, kMatmulN / kNzFractalDim, kMatmulK / kNzFractalDim, 0, 0, true, 0});
-    }
-    SetFlag<HardEvent::MTE1_M>(0);
-    WaitFlag<HardEvent::MTE1_M>(0);
-    Mmad(c1Local, a2Local, b2Local, MmadParams{kMatmulM, kMatmulN, kMatmulK, 0, false, true});
-
-    SetFlag<HardEvent::M_MTE1>(0);
-    WaitFlag<HardEvent::M_MTE1>(0);
-    // Accumulate A_lo * B_hi into the same L0C matrix. This compensates most
-    // of the FP16 quantization error while keeping the main product on Cube.
-    DataCopy(a1Local, aResidualStageGm, Nd2NzParams{1, kMatmulM, kMatmulK, 0, kMatmulK, kMatmulM, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
-      LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
-               LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
-    }
-    SetFlag<HardEvent::MTE1_M>(0);
-    WaitFlag<HardEvent::MTE1_M>(0);
-    Mmad(c1Local, a2Local, b2Local, MmadParams{kMatmulM, kMatmulN, kMatmulK, 0, false, false});
-
-    SetFlag<HardEvent::M_MTE1>(0);
-    WaitFlag<HardEvent::M_MTE1>(0);
-
-    LocalTensor<float> cNz = chunkKFp32;
-    // On dav_m200, raw Mmad writes L0C in NZ order and Fixpipe is unavailable.
-    // Copy N/16 fractals, each containing M/16 cube blocks, into UB in NZ order.
-    DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim),
-                               static_cast<uint16_t>(kMatmulM / kNzFractalDim), 0, 0};
-    DataCopyEnhancedParams cCopyEnhanced;
-    cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
-    CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
-    PipeBarrier<PIPE_ALL>();
-
-    // Convert the UB NZ matrix to row-major ND one output row at a time.
-    // Each row contributes 16 FP32 values from every N fractal.
-    constexpr uint16_t kNdBlockLen = kNzFractalDim * sizeof(float) / 32;
-    constexpr uint16_t kNzSrcStride =
-      (kMatmulM / kNzFractalDim * kNzFractalDim * kNzFractalDim - kNzFractalDim) * sizeof(float) / 32;
-    DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim), kNdBlockLen, kNzSrcStride, 0};
-    for (uint32_t row = 0; row < kMatmulM; ++row) {
-      DataCopy(chunkVFp32[row * kMatmulN], cNz[row * kNzFractalDim], nzToNdParams);
-    }
-    PipeBarrier<PIPE_ALL>();
-    Muls(chunkVFp32, chunkVFp32, -1.0f, kCElements);
-    PipeBarrier<PIPE_V>();
-    Add(chunkVFp32, chunkVFp32, chunkAttnOutFp32, kCElements);
-    PipeBarrier<PIPE_V>();
+    NzTileToNd<kMatmulM, kMatmulN>(chunkAttnOutFp32, cNzOut);
   }
 
   // Step 5: attn_inter = (q * exp(g_cumsum)) @ state -> chunkAttnOutFp32.
@@ -2290,9 +2138,8 @@ class ChunkGatedDeltaRule {
   /**
    * @brief Fixed-shape state update: state = exp(g_last) * state +
    *        (K * exp(g_last - g))^T @ v_new. The weighted K^T @ v_new product
-   *        uses Cube. The 64/80/96 buckets convert the complete NZ result to
-   *        contiguous ND and use one wide Vector Add; the 128 bucket retains
-   *        the segmented fallback.
+   *        uses Cube for every bucket; the complete NZ result is converted in
+   *        place and accumulated with one wide Vector Add per 16-column group.
    * @param t_start Start position on the T dimension.
    * @param qkHead  Q/K head index for this dispatch.
    */
@@ -2308,7 +2155,10 @@ class ChunkGatedDeltaRule {
     // K originates as an FP16 input, so it is exact in FP16. Folding the decay
     // into v_new keeps the Cube A operand exact (no hi/lo split), so only the
     // B operand is compensated: one A transpose/stage instead of two.
-    constexpr uint32_t kTileM = (kSpecializedDk <= 96) ? kSpecializedDk : 64;
+    // The whole K row-block is accumulated in one L0C tile (a 128x128 FP32
+    // result is 64 KiB, within the 128 KiB L0C), so the 128 bucket no longer
+    // pays a second L0C->UB conversion plus NZ->ND Add pass per chunk.
+    constexpr uint32_t kTileM = kSpecializedDk;
     constexpr uint32_t kMatmulK = 64;
     constexpr uint32_t kMTileCount = (kStateRows + kTileM - 1) / kTileM;
     constexpr uint32_t kAElements = kStateRows * kMatmulK;
@@ -2318,28 +2168,21 @@ class ChunkGatedDeltaRule {
     constexpr uint32_t kCTileElements = kTileM * kMatmulN;
     __gm__ uint8_t *stageBase = GetCubeStageBase(0);
     GlobalTensor<half> aStageGm;
-    GlobalTensor<half> bStageGm;
-    GlobalTensor<half> bResidualStageGm;
     aStageGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(stageBase), kAElements);
-    bStageGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(stageBase + kAElements * sizeof(half)), kBElements);
-    bResidualStageGm.SetGlobalBuffer(
-      reinterpret_cast<__gm__ half *>(stageBase + (kAElements + kBElements) * sizeof(half)), kBElements);
 
     float gLast = gCumsumFp32.GetValue(kMatmulK - 1);
     float gLastExp = expGCumFp32.GetValue(kMatmulK - 1);
+    // The Muls/Duplicate/Sub/Exp/Brcb chain is entirely PIPE_V, so same-pipe
+    // barriers between its steps are redundant (issue order is the dependency).
     Muls(stateInFp32, stateInFp32, gLastExp, kStateElements);
     Duplicate(deltaFp32, gLast, kMatmulK);
-    PipeBarrier<PIPE_V>();
     Sub(deltaFp32, deltaFp32, gCumsumFp32, kMatmulK);
-    PipeBarrier<PIPE_V>();
     Exp(deltaFp32, deltaFp32, kMatmulK);
-    PipeBarrier<PIPE_V>();
 
     // v_new *= exp(g_last - g) with a row-broadcast high-dimensional Mul.
     LocalTensor<float> deltaBlocks = chunkAttnOutFp32;
     uint8_t brcbRepeats = static_cast<uint8_t>(Ceil(kMatmulK, FP32_NUM_PER_BLOCK));
     Brcb(deltaBlocks, deltaFp32, brcbRepeats, BrcbRepeatParams{1, 8});
-    PipeBarrier<PIPE_V>();
     uint8_t vRowStride = static_cast<uint8_t>(kMatmulN / FP32_NUM_PER_BLOCK);
     BinaryRepeatParams vMulParams{1, 1, 0, vRowStride, vRowStride, 1};
     uint32_t vOffset = 0;
@@ -2351,8 +2194,20 @@ class ChunkGatedDeltaRule {
       Mul(chunkVFp32[vOffset], chunkVFp32[vOffset], deltaBlocks, static_cast<uint64_t>(kMatmulN - vOffset),
           static_cast<uint8_t>(kMatmulK), vMulParams);
     }
-    PipeBarrier<PIPE_V>();
-    StageHalfWithResidual(chunkVFp32, chunkAttnOutFp32, bStageGm, bResidualStageGm, kBElements);
+
+    LocalMemAllocator<AscendC::Hardware::L1> l1Allocator;
+    LocalMemAllocator<AscendC::Hardware::L0A> l0aAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0B> l0bAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0C> l0cAllocator;
+    LocalTensor<half> a1Local = l1Allocator.Alloc<TPosition::A1, half>(kATileElements);
+    LocalTensor<half> b1Local = l1Allocator.Alloc<TPosition::B1, half>(kBElements);
+    LocalTensor<half> bLoLocal = l1Allocator.Alloc<TPosition::B1, half>(kBElements);
+    LocalTensor<half> a2Local = l0aAllocator.Alloc<TPosition::A2, half>(kATileElements);
+    LocalTensor<half> b2Local = l0bAllocator.Alloc<TPosition::B2, half>(2 * kBElements);
+    LocalTensor<float> c1Local = l0cAllocator.Alloc<TPosition::CO1, float>(kCTileElements);
+
+    // Both B halves stay resident in L0B across every M tile.
+    StageHalfWithResidualToL1<kMatmulK, kMatmulN>(chunkVFp32, chunkAttnOutFp32, b1Local, bLoLocal);
 
     // A = K^T in exact FP16. StageAttnKeyOperands already cached this tile in
     // GM for the whole chunk; only fall back to a fresh transpose if it did not.
@@ -2391,26 +2246,13 @@ class ChunkGatedDeltaRule {
       PipeBarrier<PIPE_ALL>();
     }
 
-    LocalMemAllocator<AscendC::Hardware::L1> l1Allocator;
-    LocalMemAllocator<AscendC::Hardware::L0A> l0aAllocator;
-    LocalMemAllocator<AscendC::Hardware::L0B> l0bAllocator;
-    LocalMemAllocator<AscendC::Hardware::L0C> l0cAllocator;
-    LocalTensor<half> a1Local = l1Allocator.Alloc<TPosition::A1, half>(kATileElements);
-    LocalTensor<half> b1Local = l1Allocator.Alloc<TPosition::B1, half>(2 * kBElements);
-    LocalTensor<half> a2Local = l0aAllocator.Alloc<TPosition::A2, half>(kATileElements);
-    LocalTensor<half> b2Local = l0bAllocator.Alloc<TPosition::B2, half>(2 * kBElements);
-    LocalTensor<float> c1Local = l0cAllocator.Alloc<TPosition::CO1, float>(kCTileElements);
-
-    // Both B halves stay resident in L0B across every M tile.
-    DataCopy(b1Local, bStageGm, Nd2NzParams{1, kMatmulK, kMatmulN, 0, kMatmulN, kMatmulK, 1, 0});
-    DataCopy(b1Local[kBElements], bResidualStageGm, Nd2NzParams{1, kMatmulK, kMatmulN, 0, kMatmulN, kMatmulK, 1, 0});
-    SetFlag<HardEvent::MTE2_MTE1>(0);
-    WaitFlag<HardEvent::MTE2_MTE1>(0);
+    SetFlag<HardEvent::MTE3_MTE1>(0);
+    WaitFlag<HardEvent::MTE3_MTE1>(0);
     for (uint32_t kBlock = 0; kBlock < kMatmulK / kNzFractalDim; ++kBlock) {
       LoadData(b2Local[kBlock * kMatmulN * kNzFractalDim], b1Local[kBlock * kNzFractalRowBytes / sizeof(half)],
                LoadData2DParams{0, kMatmulN / kNzFractalDim, kMatmulK / kNzFractalDim, 0, 0, true, 0});
       LoadData(b2Local[kBElements + kBlock * kMatmulN * kNzFractalDim],
-               b1Local[kBElements + kBlock * kNzFractalRowBytes / sizeof(half)],
+               bLoLocal[kBlock * kNzFractalRowBytes / sizeof(half)],
                LoadData2DParams{0, kMatmulN / kNzFractalDim, kMatmulK / kNzFractalDim, 0, 0, true, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
@@ -2438,10 +2280,11 @@ class ChunkGatedDeltaRule {
       SetFlag<HardEvent::M_MTE1>(0);
       WaitFlag<HardEvent::M_MTE1>(0);
 
-      LocalTensor<float> cNz = chunkKFp32;
-      if constexpr (kSpecializedDk <= 96) {
-        cNz = tmpBuff.GetWithOffset<float>(kStateElements, 0);
-      }
+      // The L0C->UB copy below writes curTileM x kMatmulN floats, i.e. the whole
+      // kStateElements slab. That can exceed the cs * alignK footprint of
+      // chunkKFp32, which aliases this region (exactly 2x for the 128 bucket), so
+      // the scratch must be declared with its real extent instead of that view.
+      LocalTensor<float> cNz = tmpBuff.GetWithOffset<float>(kStateElements, 0);
       DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / 16), static_cast<uint16_t>(curTileM / 16), 0, 0};
       DataCopyEnhancedParams cCopyEnhanced;
       cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
@@ -2624,7 +2467,6 @@ class ChunkGatedDeltaRule {
   uint32_t load_;
   uint32_t usedblk_;
   uint32_t avgload_;
-  uint32_t attnStaged_;
   uint32_t keyCacheValid_;
   float scale_;
   uint64_t blockIdx_;
