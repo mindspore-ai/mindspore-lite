@@ -26,6 +26,12 @@
 # Usage:  bash build_all_ops.sh <output_dir>
 # Env:    ASCEND_HOME_PATH / ASCEND_TOOLKIT_HOME (CANN toolchain root).
 #         Optional: ASCEND_CUSTOM_THREADS (build parallelism, default = nproc).
+#                   CUSTOM_OPS_VERBOSE=1 (console shows the raw, unfiltered
+#                   toolchain output; the per-SoC log gets everything anyway).
+#
+# The console stream is filtered of CANN kernel-compiler debug spam (see
+# _cann_console_filter); the complete raw output of each SoC is kept in
+# build_out/<soc>.build.log.
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -110,29 +116,79 @@ soc_to_compute_unit()
   esac
 }
 
-# Run a cmake --build target with the repetitive per-binary CANN opbuild/install log spam
-# filtered out. Suppressed (printed once per kernel binary -- 128x for this op under
-# DataTypeList + DynamicFormat):
-#   [soc] Generating <Op>_<hash> ...   /   [soc] Generating <Op>_<hash> Done
-#   Opc tool start working now, please wait for a moment.
-#   -- Installing: ...   /   -- Up-to-date: ...   /   -- Set runtime path of ...
-# Errors, warnings, cmake progress ([n%]) and status lines are preserved. The function
-# forwards cmake's own exit code (via PIPESTATUS[0]); set +e around the pipe so grep exiting
-# 1 when ALL output is filtered does not trip errexit. CUSTOM_OPS_VERBOSE=1 bypasses the filter.
+# Console filter for the CANN kernel-compiler (bisheng / opbuild / ccec) and
+# install targets. The toolchain is extremely chatty; on a 7-op build it emits
+# ~1900 lines / 1.4 MB of which >95% is debug noise:
+#   >>> CCEC-DUMP(stage=..., ret=0): CMDS=<full compiler command line>
+#       Written unconditionally to stderr for EVERY kernel variant + link/relink
+#       step by CANN's tbe/tikcpp/ascendc_common_utility.py:dump_build_log(),
+#       followed by "OUTPUT=" and the last 3000 chars of the tool output (mostly
+#       `llvm-objdump -s` hexdumps).
+#   Deprecation warnings from CANN headers for APIs this project uses on
+#       purpose (DataCopyPad on dav_m200, SetSysWorkspace) -- each repeated per
+#       DataType/Format variant, with include chains, snippets and carets.
+#   'error: out of jump/jumpc imm range' -- non-fatal bisheng branch-relaxation
+#       probes (ret=0, build succeeds) -- and "N warnings/errors generated."
+#       counters/"[INFO] RUNTIME(...)"/"[INFO] ATRACE(...)" helper-process logs.
+#   cmake install tracing: -- Installing: / -- Up-to-date: / -- Set runtime path of.
+# Everything else (compile progress, real diagnostics, warnings and errors from
+# this repo's sources) is printed as-is. The raw stream is always tee'd to the
+# per-SoC log so nothing is lost; CUSTOM_OPS_VERBOSE=1 shows it unfiltered too.
+_cann_console_filter() {
+  awk -v logfile="$1" '
+    BEGIN { dep = 0; blank = 0; dropped = 0 }
+    /^>>> CCEC-DUMP\(/ { dropped++; next }
+    # Deprecation warnings only: match the "warning:"/"note:" headers, then hide
+    # the rest of that block (snippet, caret, the [[deprecated(...)] attribute
+    # line). Real diagnostics must never be swallowed: any "error:" line clears
+    # dep first, so the error and its own snippet/caret are still printed.
+    /warning: .*deprecated/ { dep = 1; dropped++; next }
+    /note: .*deprecated/ { dep = 1; dropped++; next }
+    /^\[\[deprecated\(/ { dropped++; next }
+    /error:/ { dep = 0 }
+    # Must precede the OUTPUT= rule: a warning can arrive as that dump tail.
+    /^OUTPUT=/ { dropped++; next }
+    /^ *[0-9a-f]{4,8} [0-9a-f]{8}( [0-9a-f]{8})*  +/ { dropped++; next }
+    dep && /^[ \t]/ { dropped++; next }
+    /^In file included from / { dropped++; next }
+    /note: in instantiation of function template specialization '\''AscendC::/ { dropped++; next }
+    /^error: out of jump\/jumpc imm range$/ { dropped++; next }
+    /^[0-9]+ (warning|error)s? generated\.$/ { dropped++; next }
+    /^\[INFO\] (RUNTIME|ATRACE)\(/ { dropped++; next }
+    # opbuild per-kernel-binary trace (128x per op under DataTypeList x Format)
+    # and cmake install tracing (once per installed file).
+    /^\[[^]]*\] Generating .* \.\.\.$/ { dropped++; next }
+    /^\[[^]]*\] Generating .* Done$/ { dropped++; next }
+    /^Opc tool start working now/ { dropped++; next }
+    /^-- (Installing|Up-to-date|Set runtime path of):? / { dropped++; next }
+    # Collapse blank-line runs left behind by dropped blocks.
+    /^[ \t]*$/ { if (blank) next; blank = 1; print; fflush(); next }
+    { blank = 0; dep = 0; print; fflush() }
+    END {
+      if (dropped > 0) {
+        printf "[filter] %d lines of CANN compiler/install debug output hidden", dropped
+        if (logfile != "") printf " (full log: %s)", logfile
+        printf "\n"
+      }
+    }
+  '
+}
+
+# Run one cmake --build target: raw output is appended to log_file, the console
+# sees the filtered stream. Forwards cmake's exit code (PIPESTATUS[0]); set +e
+# around the pipeline is required because the filter itself always succeeds and
+# would otherwise mask a failing cmake under errexit.
 _run_build_target() {
-  local build_dir="$1" target="$2" jobs="$3"
-  if [[ "${CUSTOM_OPS_VERBOSE:-0}" == "1" ]]; then
-    cmake --build "${build_dir}" --target "${target}" -j"${jobs}"
-    return $?
-  fi
+  local build_dir="$1" target="$2" jobs="$3" log_file="$4"
   set +e
-  cmake --build "${build_dir}" --target "${target}" -j"${jobs}" 2>&1 \
-    | grep -vE -e '^\[[^]]*\] Generating .* \.\.\.$' \
-              -e '^\[[^]]*\] Generating .* Done$' \
-              -e '^Opc tool start working now' \
-              -e '^-- Installing: ' \
-              -e '^-- Up-to-date: ' \
-              -e '^-- Set runtime path of '
+  if [[ "${CUSTOM_OPS_VERBOSE:-0}" == "1" ]]; then
+    cmake --build "${build_dir}" --target "${target}" -j"${jobs}" 2>&1 \
+      | tee -a "${log_file}"
+  else
+    cmake --build "${build_dir}" --target "${target}" -j"${jobs}" 2>&1 \
+      | tee -a "${log_file}" \
+      | _cann_console_filter "${log_file}"
+  fi
   local rc=${PIPESTATUS[0]}
   set -e
   return "${rc}"
@@ -149,6 +205,13 @@ build_one_soc()
   local ws="${WORK_ROOT}/${soc_name}"
   rm -rf "${ws}"
   mkdir -p "${ws}/op_host" "${ws}/op_kernel"
+
+  # Untruncated build log for this SoC (console output is filtered, see
+  # _cann_console_filter). Kept outside ws/ so failures can be inspected.
+  local log_file="${WORK_ROOT}/${soc_name}.build.log"
+  mkdir -p "${WORK_ROOT}"
+  : > "${log_file}"
+  echo "  full build log: ${log_file}"
 
   # 1. Copy the CANN build scaffolding into the workspace root. Use -L to
   #    dereference symlinks: the template's cmake/util/*.py are symlinks into a
@@ -202,6 +265,21 @@ build_one_soc()
   #    intentionally ship only operator sources (.cpp/.h), never build files.
   cp -fL "${TEMPLATE_DIR}/op_host/CMakeLists.txt"   "${ws}/op_host/CMakeLists.txt"
   cp -fL "${TEMPLATE_DIR}/op_kernel/CMakeLists.txt" "${ws}/op_kernel/CMakeLists.txt"
+  #    Silence -Wwrite-strings only on the targets that compile opbuild's
+  #    generated aclnn wrappers (they assign string literals to `char *` for
+  #    OPTIONAL String attr defaults). Applying it project-wide would also mute
+  #    the same diagnostic for this repo's own op_host/op_kernel sources.
+  #    Target names come from the CANN template; if a future CANN renames them
+  #    the guards make this a no-op (the warnings return, the build still works).
+  cat >> "${ws}/op_host/CMakeLists.txt" <<'EOF'
+
+# -Wno-write-strings for opbuild-generated aclnn wrappers only (build_all_ops.sh).
+foreach(_generated_target cust_opapi cust_opapi_obj)
+  if(TARGET ${_generated_target})
+    target_compile_options(${_generated_target} PRIVATE -Wno-write-strings)
+  endif()
+endforeach()
+EOF
 
   # 4. Configure + compile kernels + stage the vendor package (native build).
   #    `binary` compiles the device kernels (-> op_kernel/binary/<unit>/);
@@ -210,6 +288,9 @@ build_one_soc()
   #    CPack/makeself — no .run self-extractor is produced.
   local build_dir="${ws}/build_out"
   echo "cmake configure: ${ws}"
+  # -Wno-write-strings is NOT set here: it is scoped to the generated aclnn
+  # wrapper targets inside the copied op_host/CMakeLists.txt (step 3), so this
+  # repo's own sources still get the write-strings diagnostic.
   cmake -S "${ws}" -B "${build_dir}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DASCEND_CANN_PACKAGE_PATH="${ASCEND_CANN_PACKAGE_PATH}" \
@@ -225,9 +306,9 @@ build_one_soc()
 
   local jobs="${ASCEND_CUSTOM_THREADS:-$(nproc)}"
   echo "build target: binary (-j${jobs})"
-  _run_build_target "${build_dir}" binary "${jobs}"
+  _run_build_target "${build_dir}" binary "${jobs}" "${log_file}"
   echo "build target: install"
-  _run_build_target "${build_dir}" install "${jobs}"
+  _run_build_target "${build_dir}" install "${jobs}" "${log_file}"
 
   # 5. Copy the (dereferenced) vendor folder into a per-SoC output dir. The wheel
   #    ships this folder as-is; the import hook points ASCEND_CUSTOM_OPP_PATH at it
