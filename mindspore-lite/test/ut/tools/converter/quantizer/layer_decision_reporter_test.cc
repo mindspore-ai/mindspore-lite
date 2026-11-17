@@ -198,6 +198,15 @@ TEST(LayerDecisionReporterTest, GenerateReportWithStatusRows) {
 
   // Header first.
   EXPECT_NE(content.find("OriginNames,OriginOpTypes,NodeName"), std::string::npos);
+  // OriginNames stays pure origin domain: the recorded row starts with the original name
+  // directly followed by the NodeName column - the fused current name never leaks into the
+  // config-value column (previously "Conv2DFusion-3;Conv_3,...").
+  EXPECT_NE(content.find("Conv_3,Conv,Conv2DFusion-3,"), std::string::npos);
+  EXPECT_EQ(content.find("Conv2DFusion-3;Conv_3"), std::string::npos);
+  // A node without origin records (never an original-graph operator) leaves both origin
+  // columns empty instead of echoing its generated current name into the config-value column.
+  EXPECT_NE(content.find(",,Reshape-20,Reshape,"), std::string::npos);
+  EXPECT_EQ(content.find("Reshape-20,,Reshape-20,"), std::string::npos);
   // Layer row: origin columns populated, decision and matched config recorded.
   EXPECT_NE(content.find("Conv_3"), std::string::npos);
   EXPECT_NE(content.find("Conv2DFusion-3"), std::string::npos);

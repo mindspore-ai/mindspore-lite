@@ -292,6 +292,7 @@ STATUS TfliteModelParser::ConvertOps(const std::unique_ptr<tflite::SubGraphT> &t
     auto tflite_op_type = GetBuiltinCode(opcode);
     std::string op_type = tflite::EnumNameBuiltinOperator(tflite_op_type);
     std::string op_name = op_type + "-" + std::to_string(op_idx);
+    const auto origin_identifier = op_idx;  // operators-array index, what Netron shows as the identifier
     op_idx++;
     // parse primitive
     MS_LOG(INFO) << "parse node :" << op_name;
@@ -338,7 +339,7 @@ STATUS TfliteModelParser::ConvertOps(const std::unique_ptr<tflite::SubGraphT> &t
     // identifier property, so users read the number straight from the original graph and spell
     // the config value as TYPE_identifier (e.g. CONV_2D_12). Underscore keeps it distinct from
     // the TYPE-INDEX current name.
-    opt::TraceOriginInfo(new_cnode, op_type + "_" + std::to_string(op_idx), op_type);
+    opt::TraceOriginInfo(new_cnode, op_type + "_" + std::to_string(origin_identifier), op_type);
 
     // parse outputs
     status = ConvertOutputTensor(tflite_subgraph, func_graph, op, new_cnode, anf_node_map);
