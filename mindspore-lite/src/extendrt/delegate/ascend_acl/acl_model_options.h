@@ -48,6 +48,7 @@ struct AclModelOptions {
   std::string dump_path;
   std::string profiling_path;
   std::string model_path;
+  bool enable_default_context = false;
   bool multi_model_sharing_mem_prepare = false;
   bool multi_model_sharing_mem = false;
   bool share_weightspace = false;
