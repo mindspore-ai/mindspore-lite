@@ -101,8 +101,8 @@ host 侧 `ChunkGatedDeltaRuleTilingData` 与 device 侧镜像结构体（`op_hos
 | 输出数据类型 | out / final_state = float16 | FP32 中间结果最终 cast 回 FP16。 |
 | 输入格式 | `FORMAT_ND` | def 中 ND + `DynamicFormatFlag(true)` + `DynamicRankSupportFlag(true)`，支持动态 shape 与动态秩。 |
 | chunkSize | 固定 64 | `kDefaultChunkSize=64`，与 Atlas 800I A2 端口对齐；不可配置。 |
-| Dk（键头维） | ≤ 128 且需落入 64/80/96/128 桶位走快路径 | `SelectCubeDk` 将 Dk 上取整到 ≥ Dk 的最小桶宽（64/80/96/128）；超过 128 回退 `kSpecializedDk=96` 通用路径（性能下降）。 |
-| Dv（值头维） | 受 UB 容量约束 | `SolveVStep` 按 FP32 块对齐（8 元素）反解最大可容纳 `vStep`；`Dv` 过大时自动拆多 V-tile，`vStep` 不得小于 16（`FP16_NUM_PER_BLOCK`），否则 tiling 失败返回 `GRAPH_FAILED`。 |
+| Dk（键头维） | ≤ 128 且需落入 64/80/96/128 桶位走快路径 | `SelectCubeDk` 将 Dk 上取整到 ≥ Dk 的最小桶宽（64/80/96/128）。**超过 128 走通用回退路径：不是推荐用法**——性能下降约一个数量级，且该路径历史上出现过非确定性 NaN 缺陷，见 3.2。 |
+| Dv（值头维） | 受 UB 容量约束，且须为 16 的倍数 | `SolveVStep` 按 FP32 块对齐（8 元素）反解最大可容纳 `vStep`；`Dv` 过大时自动拆多 V-tile，`vStep` 不得小于 16（`FP16_NUM_PER_BLOCK`），否则 tiling 失败返回 `GRAPH_FAILED`。`Dv % 16 != 0` 时输出会越界写，见 3.2.2。 |
 | 头数关系 | 支持 GQA：`Hv` 可小于 `Hqk`，`nvPerNk = max(NV_/NK_, 1)`（`NV_≥NK_` 时取 `NV_/NK_`，否则按 1 复用同一 Q/K 头） | Q/K 头与 V 头通过 `head_i / nvPerNk` 映射。 |
 | batch | ≥ 1，由 `initial_state` 的第 0 维推导 | 多 batch 在核间切分；`actual_seq_lengths` 控制每 batch 真实长度，padding 跳过。 |
 | 动态 shape | 支持 | `DynamicCompileStaticFlag(true)` + `DynamicShapeSupportFlag(true)`；tiling 运行时按实际 shape 反解 `vStep`/`blockDim`/`tilingKey`。 |
@@ -111,13 +111,45 @@ host 侧 `ChunkGatedDeltaRuleTilingData` 与 device 侧镜像结构体（`op_hos
 ### 3.2 不支持的场景
 
 - **非 Atlas 300I Duo 硬件**：未在 Atlas 800I A2 等添加 `AICoreConfig`，部署到这些平台会找不到编译产物。
-- **`Dk > 128` 的快路径**：`SelectCubeDk` 对 `Dk>128` 返回 0，kernel 走 `kSpecializedDk=96` 的通用回退路径（`tilingKey=2`），稠密积改为逐行 `Axpy`/标量 `DotFp32`，性能显著下降；不报错但非推荐。
+- **`Dk > 128`（通用回退路径）**：`SelectCubeDk` 对 `Dk>128` 返回 0，kernel 走 `kSpecializedDk=96` 的通用回退路径（`tilingKey=2`），稠密积改为逐行 `Axpy` / 标量 `DotFp32`，性能下降约一个数量级（实测 `Dk=160, T=256` 单次 43 ms，同 T 的 `Dk=128` 为 1.5 ms）。**不报错，但非推荐用法**；详细缺陷记录见下方 3.2.1。
 - **`g` 输入类型非 float32**：def 固定 `g` 为 `ge::DT_FLOAT`；若上游以 FP16 传入 `g`，需在接入层先转换，否则类型校验失败。
 - **极小 `Dv` 无法容纳最小 V-tile**：当 UB 不足以容纳 `vStep=16`（FP32 块对齐下限）所需的 `tmpBuff+outQueue` 时，`SolveVStep` 返回 `false`，tiling 直接 `GRAPH_FAILED`，算子无法编译。
+- **`Dv % 16 != 0`（输出越界写）**：末尾 V-tile 宽度不是 16 的倍数时，`out` 会越界写坏同一 token 下一个 head 的 `v` 区，**不报错但结果错误**；`final_state` 不受影响。**`Dv` 请取 16 的倍数**（64 / 96 / 128 / 256 等均不受影响），机理、影响范围与修复建议见 3.2.2。
 - **FP32 Cube 路径**：Atlas 300I Duo Cube 的 mmad 不支持 `f32f32f32`（仅 FP16 输入）。因此 Atlas 800I A2 上“原生 FP32 Cube”的 CGDR 路径无法直接移植到 Atlas 300I Duo ；本实现以 FP16 拆分补偿替代。
 - **`SetAtomicAdd` 跨核累加**：dav_m200（Atlas 300I Duo）上 `SetAtomicAdd` 不可用，故状态更新不依赖原子加，而是按 (batch, value-head, V-tile) 切分保证核间写互不重叠。
 - **混合精度/任意 dtype**：仅支持上述固定类型组合，不支持 bfloat16 / int8 / FP32 输入输出。
 - **训练/反向**：本算子仅前向（`KERNEL_TYPE_AIC_ONLY`），不含反向梯度。
+
+#### 3.2.1 `Dk > 128`（通用回退路径）的限制与已知缺陷
+
+`SelectCubeDk` 对 `Dk > 128` 返回 0，kernel 走 `kSpecializedDk=96` 的通用回退路径（`tilingKey=2`），稠密积改为逐行
+`Axpy` / 标量 `DotFp32`，性能下降约一个数量级（`Dk=160, T=256` 单次约 43 ms，而同 `T` 的 `Dk=128` 约 1.5 ms）。
+该范围不属于推荐用法。
+
+- **已知缺陷**：该路径曾出现 `out` 与 `final_state` 全 `NaN`，且表现不稳定（同一输入多次执行，部分执行整张量均为
+  `NaN`，未出错的执行结果彼此一致）。其触发与 `ComputeRecursiveAttnBlocked64`（块状三角逆）在
+  `realK_ > kSpecializedDk`、且 attention 数据由标量路径构建时的组合相关。
+- **处置**：`ComputeRecursiveAttn` 将块状逆限定为 `realK_ <= kSpecializedDk` 时启用，`Dk > 128` 改用标量 O(n³) 递推。
+- **当前状态**：处置后该路径不再出现 `NaN`，同一配置多次执行结果一致；对 FP32 逐 token 参考
+  `nrmse ≈ 2.07e-4`、`cosine = 1.000`（`Dk = 144 / 160 / 192`）。`Dk <= 128` 的四个桶不受影响
+  （门控判据恒真，代码路径与修改前一致）。
+- **维护约束**：不要为了性能把块状逆重新放开给 `realK_ > kSpecializedDk`。若需要 `Dk > 128` 的高性能支持，
+  应扩展 `SelectCubeDk` 到 160 / 192 / 256 并新增对应的 `kSpecializedDk` 编译桶，使这些 shape 走 Cube 快路径；
+  `Dk = 160` 若要求 `vStep == Dk`，`tmpBuff + outQueue` 需 284 KB，超过 256 KB 的 UB 预算，需先解决 UB 规划。
+
+#### 3.2.2 `Dv % 16 != 0` 时的输出越界写（已知缺陷）
+
+`WriteAttnTileToGm` 的逐行回退分支在末尾 V-tile 宽度不是 16 的倍数时，会越界写坏同一 token 下一个 head 的
+`v[0 .. extra-1]`。
+
+- **触发条件**：`Dv % 16 != 0`；`Dv` 为 16 的倍数（64 / 96 / 128 / 256 等）时不受影响。
+- **机理**：本平台 `DataCopy` 的拷贝长度只能按 32 B 块表达，`DataCopyPad` 不可用，`CopyToGm` 因此把行宽向上取整到
+  `AlignUp(curV, 16)` 个元素再写出，多出的不超过 15 个元素落入下一个 head 的 `v` 区。
+- **影响**：`out` 静默出错（对 FP32 逐 token 参考，`Dv = 72 / 76 / 136 / 200` 的 `nrmse` 约 0.16 ~ 0.24，
+  `Dv = 8` 约 0.68）；`final_state` 不受影响。
+- **使用约束**：`Dv` 请取 16 的倍数；如需其它宽度，请在接入层自行拆分末尾 V-tile。
+- **修复建议**：在 UB 侧先把末尾 tile 补齐到 16 列再整块写出，使额外代价只落在 `Dv % 16 != 0` 的形状上；
+  任何触及热路径的改动都必须验证主 shape 的性能无回退。
 
 ### 3.3 数值约束与精度说明
 
