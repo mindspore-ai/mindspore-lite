@@ -110,12 +110,19 @@ Status ModelInfer::Init() {
   }
   {
     ModelInferContextGuard guard;
-    ret = CALL_ASCEND_API(aclrtCreateContext, &context_, device_id);
-    if (ret != ACL_SUCCESS) {
-      MS_LOG(ERROR) << "Acl create context failed.";
-      return Status(kLiteAclInitFailed, "Acl create context failed!");
+    if (options_->enable_default_context) {
+      ret = CALL_ASCEND_API(aclrtGetCurrentContext, &context_);
+      if (ret != ACL_SUCCESS || context_ == nullptr) {
+        MS_LOG(ERROR) << "Get current acl context failed, ret " << ret;
+        return Status(kLiteAclInitFailed, "Get current acl context failed!");
+      }
+    } else {
+      ret = CALL_ASCEND_API(aclrtCreateContext, &context_, device_id);
+      if (ret != ACL_SUCCESS) {
+        MS_LOG(ERROR) << "Acl create context failed.";
+        return Status(kLiteAclInitFailed, "Acl create context failed!");
+      }
     }
-    MS_LOG(INFO) << "get default context success, we will use default context";
 
     aclrtRunMode run_mode;
     ret = CALL_ASCEND_API(aclrtGetRunMode, &run_mode);
@@ -126,12 +133,15 @@ Status ModelInfer::Init() {
     bool is_device = (run_mode == ACL_DEVICE);
     model_process_.SetIsDevice(is_device);
     MS_LOG(INFO) << "Get run mode success is device input/output " << is_device;
-    ret = CALL_ASCEND_API(aclrtCreateStream, &stream_);
-    if (ret != ACL_SUCCESS) {
-      MS_LOG(ERROR) << "Acl create stream failed";
-      return Status(kLiteAclInitFailed, "Acl create stream failed!");
+    if (!options_->enable_default_context) {
+      ret = CALL_ASCEND_API(aclrtCreateStream, &stream_);
+      if (ret != ACL_SUCCESS) {
+        MS_LOG(ERROR) << "Acl create stream failed";
+        return Status(kLiteAclInitFailed, "Acl create stream failed!");
+      }
     }
-    MS_LOG(INFO) << "Init model success, device id " << device_id;
+    MS_LOG(INFO) << "Init model success, device id " << device_id << ", enable default context "
+                 << options_->enable_default_context;
   }
   init_flag_ = true;
   auto end_time = lite::GetTimeUs();
@@ -169,13 +179,15 @@ Status ModelInfer::Finalize(bool process_ends) {
       }
       stream_ = nullptr;
     }
-    if (context_ != nullptr) {
+    // A shared context is owned by the caller, destroying it here would invalidate the other models using it.
+    if (!options_->enable_default_context && context_ != nullptr) {
       rt_ret = CALL_ASCEND_API(aclrtDestroyContext, context_);
       if (rt_ret != ACL_SUCCESS) {
         MS_LOG(ERROR) << "Destroy context failed";
       }
-      context_ = nullptr;
     }
+    // The handle must not outlive this model, even when the context itself belongs to the caller.
+    context_ = nullptr;
     MS_LOG(INFO) << "End to destroy context.";
   }
   if (process_ends || AclEnvGuard::GetModelNum() == 0) {

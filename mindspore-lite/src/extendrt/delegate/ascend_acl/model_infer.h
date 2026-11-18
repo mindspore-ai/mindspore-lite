@@ -54,8 +54,8 @@ class ModelInfer {
  private:
   bool init_flag_;
   std::string device_type_;
-  aclrtContext context_;
-  aclrtStream stream_;
+  aclrtContext context_ = nullptr;
+  aclrtStream stream_ = nullptr;
   std::shared_ptr<AclModelOptions> options_;
   ModelProcess model_process_;
   Profiling profiling_;

@@ -156,6 +156,10 @@ std::shared_ptr<AclModelOptions> AclGraphExecutor::GenAclOptions() {
   if (!dump_path.empty()) {
     acl_options_ptr->dump_path = dump_path;
   }
+  std::string enable_default_context = GetConfigOption(lite::kAscendContextSection, lite::kEnableDefaultContextKey);
+  if (!enable_default_context.empty()) {
+    acl_options_ptr->enable_default_context = enable_default_context == lite::kEnableValue;
+  }
   GetShareMemInfos(acl_options_ptr);
   std::string bundle_model = GetConfigOption(lite::kInnerCommon, lite::kBundleModel);
   if (!bundle_model.empty()) {

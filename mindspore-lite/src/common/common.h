@@ -111,6 +111,7 @@ static const char *const kDumpDirKey = "dump_dir";
 static const char *const kAscendContextSection = "ascend_context";
 static const char *const kProfilingPathKey = "profiling_config_file";
 static const char *const kDumpPathKey = "dump_config_file";
+static const char *const kEnableDefaultContextKey = "enable_default_context";
 static const char *const kDumpModelNameKey = "dump_model_name";
 static const char *const kGeVariableMemoryMaxSize = "ge_variable_memory_max_size";
 static const char *const kGeGraphMemoryMaxSize = "ge_graph_memory_max_size";
