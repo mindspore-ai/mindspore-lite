@@ -19,6 +19,7 @@
 #include <algorithm>
 #include "src/litert/infer_manager.h"
 #include "coder/opcoders/op_coder.h"
+#include "tools/converter/micro/coder/generator/component/component.h"
 #include "tools/common/string_util.h"
 
 namespace mindspore::lite::micro {

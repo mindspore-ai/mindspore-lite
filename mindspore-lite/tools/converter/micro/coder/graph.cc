@@ -203,6 +203,8 @@ int CoderGraph::InitGraphInOutTensors() {
 
 std::vector<lite::Tensor *> CoderGraph::input_tensors() const { return input_tensors_; }
 
+std::vector<lite::Tensor *> CoderGraph::label_tensors() const { return label_tensors_; }
+
 std::vector<lite::Tensor *> CoderGraph::output_tensors() const { return output_tensors_; }
 
 std::vector<lite::Tensor *> CoderGraph::eval_output_tensors() const { return eval_output_tensors_; }
@@ -228,69 +230,71 @@ void CoderGraph::InitOutputs() {
                        [&](uint32_t a) { return this->all_tensors_.at(a); });
 }
 
+namespace {
+OperatorCoder *FindLossCoder(const std::vector<OperatorCoder *> &train_coders) {
+  auto iter = std::find_if(train_coders.begin(), train_coders.end(), [](const OperatorCoder *coder) {
+    return coder != nullptr && IsLossCoder(coder) && !IsGradCoder(coder);
+  });
+  return iter == train_coders.end() ? nullptr : *iter;
+}
+}  // namespace
+
 int CoderGraph::CompileTrainOutputs(const std::vector<OperatorCoder *> &train_coders) {
-  train_outputs_map_.clear();
-  train_output_tensors_.clear();
-  for (auto train_coder : train_coders) {
-    MS_CHECK_TRUE_MSG(train_coder != nullptr, RET_ERROR, "train coder is nullptr.");
-    if (outputs_map_.find(train_coder->name()) == outputs_map_.end() || IsMaskOutput(train_coder) ||
-        train_outputs_map_.find(train_coder->name()) != train_outputs_map_.end()) {  // filter optimizer out tensors out
-      continue;
-    }
-    MS_CHECK_TRUE_MSG(!train_coder->output_tensors().empty(), RET_ERROR, "output tensors is empty.");
-    auto ms_tensor = train_coder->output_tensors().at(0);
-    if (ms_tensor != nullptr) {
-      train_outputs_map_[train_coder->name()].emplace_back(ms_tensor);
-      train_output_tensors_.emplace_back(ms_tensor);
-    }
-  }
-  if (train_outputs_map_.empty()) {
-    train_outputs_map_ = outputs_map_;
-  }
-  if (train_output_tensors_.empty()) {
-    train_output_tensors_ = output_tensors_;
-  }
+  train_outputs_map_ = outputs_map_;
+  train_output_tensors_ = output_tensors_;
+  auto *loss_coder = FindLossCoder(train_coders);
+  MS_CHECK_TRUE_MSG(loss_coder != nullptr, RET_ERROR, "can't find synthetic loss coder.");
+  MS_CHECK_TRUE_MSG(!loss_coder->output_tensors().empty(), RET_ERROR, "loss output tensors are empty.");
+  Tensor *loss_output = loss_coder->output_tensors().at(0);
+  MS_CHECK_TRUE_MSG(loss_output != nullptr, RET_NULL_PTR, "loss output tensor is nullptr.");
+  // Train mode keeps original graph outputs stable and appends loss as the extra training metric output.
+  train_outputs_map_[loss_coder->name()].emplace_back(loss_output);
+  train_output_tensors_.emplace_back(loss_output);
   return RET_OK;
 }
 
 int CoderGraph::CompileEvalOutputs(const std::vector<OperatorCoder *> &train_coders) {
-  eval_outputs_map_.clear();
-  eval_output_tensors_.clear();
-  for (auto coder : train_coders) {
-    MS_CHECK_TRUE_MSG(coder != nullptr, RET_ERROR, "coder is nullptr.");
-    if (!IsLossCoder(coder) || IsGradCoder(coder)) {
-      continue;
-    }
-    for (auto in_coder : coder->input_ops()) {
-      if (IsLossCoder(in_coder) || IsGradCoder(in_coder)) {
-        continue;
-      }
-      auto in_in_coders = in_coder->input_ops();
-      bool is_loss = std::any_of(in_in_coders.begin(), in_in_coders.end(),
-                                 [](const OperatorCoder *coder) { return IsLossCoder(coder); });
-      if (is_loss || eval_outputs_map_.find(in_coder->name()) != eval_outputs_map_.end()) {
-        continue;
-      }
-      MS_CHECK_TRUE_MSG(!in_coder->output_tensors().empty(), RET_ERROR, "output tensors is empty.");
-      auto ms_tensor = in_coder->output_tensors().at(0);
-      if (ms_tensor != nullptr) {
-        ms_tensor->set_init_ref_count(ms_tensor->init_ref_count() + 1);
-        eval_outputs_map_[in_coder->name()].emplace_back(ms_tensor);
-        eval_output_tensors_.emplace_back(ms_tensor);
-      }
-    }
-  }
-  if (eval_outputs_map_.empty()) {
-    eval_outputs_map_ = outputs_map_;
-  }
-  if (eval_output_tensors_.empty()) {
-    eval_output_tensors_ = output_tensors_;
-  }
+  eval_outputs_map_ = outputs_map_;
+  eval_output_tensors_ = output_tensors_;
+  auto *loss_coder = FindLossCoder(train_coders);
+  MS_CHECK_TRUE_MSG(loss_coder != nullptr, RET_ERROR, "can't find synthetic loss coder.");
+  MS_CHECK_TRUE_MSG(!loss_coder->output_tensors().empty(), RET_ERROR, "loss output tensors are empty.");
+  Tensor *loss_output = loss_coder->output_tensors().at(0);
+  MS_CHECK_TRUE_MSG(loss_output != nullptr, RET_NULL_PTR, "loss output tensor is nullptr.");
+  // Eval mode uses the same output contract as Train mode: original graph outputs followed by loss.
+  eval_outputs_map_[loss_coder->name()].emplace_back(loss_output);
+  eval_output_tensors_.emplace_back(loss_output);
   return RET_OK;
 }
 
 void CoderGraph::SetAllTensors(const std::vector<Tensor *> &all_tensors) {
   all_tensors_.insert(all_tensors_.end(), all_tensors.begin(), all_tensors.end());
+}
+
+void CoderGraph::AddInputTensor(Tensor *input_tensor) {
+  if (input_tensor == nullptr) {
+    MS_LOG(ERROR) << "input tensor is nullptr, can not add to coder_graph";
+    return;
+  }
+  if (std::find(input_tensors_.begin(), input_tensors_.end(), input_tensor) == input_tensors_.end()) {
+    input_tensors_.emplace_back(input_tensor);
+  }
+  if (std::find(all_tensors_.begin(), all_tensors_.end(), input_tensor) == all_tensors_.end()) {
+    all_tensors_.emplace_back(input_tensor);
+  }
+}
+
+void CoderGraph::AddLabelTensor(Tensor *label_tensor) {
+  if (label_tensor == nullptr) {
+    MS_LOG(ERROR) << "label tensor is nullptr, can not add to coder_graph";
+    return;
+  }
+  if (std::find(label_tensors_.begin(), label_tensors_.end(), label_tensor) == label_tensors_.end()) {
+    label_tensors_.emplace_back(label_tensor);
+  }
+  if (std::find(all_tensors_.begin(), all_tensors_.end(), label_tensor) == all_tensors_.end()) {
+    all_tensors_.emplace_back(label_tensor);
+  }
 }
 
 void CoderGraph::SetInputIndices(const std::vector<uint32_t> &input_indices) {
@@ -366,6 +370,13 @@ int CoderGraph::RemoveCast() {
     if (node->node_type_ == mindspore::schema::PrimitiveType_Cast) {
       auto cast_output_tensor = node->output_indices_.front();
       auto cast_input_tensor = node->input_indices_.front();
+      auto input_tensor = graph->all_tensors_.at(cast_input_tensor);
+      auto output_tensor = graph->all_tensors_.at(cast_output_tensor);
+      auto input_type = input_tensor->dataType();
+      auto output_type = output_tensor->dataType();
+      if (input_type != output_type) {
+        continue;
+      }
       for (const auto &post_op_idx : tensor_post_ops[cast_output_tensor]) {
         auto post_op = graph->all_nodes_[post_op_idx];
         auto iter = std::find(post_op->input_indices_.begin(), post_op->input_indices_.end(), cast_output_tensor);

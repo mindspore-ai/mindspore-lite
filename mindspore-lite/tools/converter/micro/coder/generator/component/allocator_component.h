@@ -28,10 +28,20 @@
 
 namespace mindspore::lite::micro {
 void CodeAllocatorFileHeader(std::ofstream &ofs);
+void CodeAllocatorIncludes(std::ofstream &ofs, bool isRiscv);
+void CodeMemBlockStruct(std::ofstream &ofs, bool isStaticAlloc);
+void CodeAllocatorFuncDecls(std::ofstream &ofs, bool isStaticAlloc, bool isRiscv);
+void CodeAllocatorHeaderContent(std::ofstream &ofs, bool isStaticAlloc, bool isRiscv);
 void CodeCalcRefCount(std::ofstream &ofs);
+void CodeCalcRefCountNonRiscV(std::ofstream &ofs, bool isStaticAlloc);
+void CodeCalcRefCountRiscV(std::ofstream &ofs, bool isStaticAlloc);
+void CodeCalcRefCountContent(std::ofstream &ofs, bool isStaticAlloc, bool isRiscv);
 void CodeGlobalMemory(std::ofstream &ofs, size_t size);
+void CodeGlobalMemoryNonRiscV(std::ofstream &ofs, size_t size, bool isStaticAlloc);
+void CodeGlobalMemoryRiscV(std::ofstream &ofs, size_t size, bool isStaticAlloc);
+void CodeGlobalMemoryContent(std::ofstream &ofs, size_t size, bool isStaticAlloc, bool isRiscv);
 void CodeMemoryOccupied(std::ofstream &ofs);
-void CodeLockOccupied(std::ofstream &ofs);
+void CodeLockOccupied(std::ofstream &ofs, bool isStaticAlloc);
 }  // namespace mindspore::lite::micro
 
 #endif  // MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_GENERATOR_COMPONENT_ALLOCATOR_COMPONENT_H_

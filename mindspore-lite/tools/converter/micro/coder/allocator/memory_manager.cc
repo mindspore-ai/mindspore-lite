@@ -32,6 +32,10 @@ int MemoryManager::AssignMemory(const std::vector<std::unique_ptr<OperatorCoder>
   for (const auto &node : nodes) {
     AssignOutputs(node);
     StoreMembufListInfo(node);
+    // Training backward code needs forward activations, so do not reuse their buffers.
+    if (Configurator::GetInstance()->code_mode() == CodeMode::Train) {
+      continue;
+    }
     ReleaseInputs(node, outputs);
   }
   return RET_OK;

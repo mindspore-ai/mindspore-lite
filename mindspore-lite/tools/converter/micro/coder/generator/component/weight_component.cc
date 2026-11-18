@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <memory>
 #include <utility>
+#include "coder/generator/component/component.h"
 #include "coder/generator/component/const_blocks/license.h"
 #include "coder/utils/coder_utils.h"
 #include "coder/opcoders/parallel.h"
@@ -47,23 +48,24 @@ std::string GenerateArrayContent(const std::vector<size_t> &contents, const std:
 }
 }  // namespace
 
-void CodeWeightFileHeader(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx) {
+void CodeWeightFileHeader(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config) {
   ofs << g_hwLicense;
   // include all operator header
   for (const auto &h_file : ctx->h_files()) {
     ofs << "#include \"" << h_file << "\"\n";
   }
-  ofs << "#include <stdlib.h>\n"
+  ofs << "#include \"nnacl_c/op_base.h\"\n"
+      << "#include <stdlib.h>\n"
       << "#include <stdint.h>\n"
-      << "#include <string.h>\n"
-      << "extern unsigned char *" << ctx->buffer_name() << ";\n"
+      << "#include <string.h>\n";
+  ofs << "extern unsigned char *" << ctx->buffer_name() << ";\n"
       << "extern uint8_t *" << ctx->weight_name() << ";\n"
       << "extern int *" << kShapePrefixName << ";\n"
       << "extern int *" << kOffsetPrefixName << ";\n"
       << "enum STATUS {\n"
-         "  RET_OK = 0,\n"
-         "  RET_ERROR = 1,\n"
-         "};\n\n";
+      << "  RET_OK = 0,\n"
+      << "  RET_ERROR = 1,\n"
+      << "};\n\n";
   // set a global var for thread_pool
   ofs << "extern int " << gThreadNum << ";\n";
 }
@@ -121,8 +123,18 @@ void CodeModelParamsForNet(std::ofstream &hofs, std::ofstream &cofs, const std::
           cofs << GetTensorDataType(tensor->data_type()) << "*" << name << " = NULL;\n";
         }
       } else {
-        hofs << "extern const " << GetTensorDataType(tensor->data_type()) << name << "[];  // " << tensor->tensor_name()
-             << std::endl;
+        auto data_type = GetTensorDataType(tensor->data_type());
+        if (config.code_mode() == CodeMode::Train) {
+          // Train mode emits two symbols for each constant weight:
+          //   xxx_const: immutable default data compiled into weight0.c.
+          //   xxx: writable RAM pointer used by forward/backward code and SGD updates.
+          hofs << "extern const " << data_type << name << kWeightSuffixName << "[];  // " << tensor->tensor_name()
+               << std::endl
+               << "extern " << data_type << "*" << name << ";  // " << tensor->tensor_name() << std::endl;
+          cofs << data_type << "*" << name << " = NULL;\n";
+        } else {
+          hofs << "extern const " << data_type << name << "[];  // " << tensor->tensor_name() << std::endl;
+        }
       }
     } else if (tensor->category() == lite::Category::VAR) {
       hofs << "extern " << GetTensorDataType(tensor->data_type()) << "*" << name << ";  // " << tensor->tensor_name()
@@ -259,7 +271,8 @@ void CodeWeightInitIfKeepWeight(std::ofstream &ofs, const std::unique_ptr<CoderC
     offsets.push_back(offsets[i - 1] + tensors_size[i - 1]);
   }
   ofs << "int Init" << ctx->GetCurModelIndex() << "(void *weight_buffer, int weight_size) {\n"
-      << "  if (weight_buffer == NULL) {\n"
+      << "  // Models without constant weights are built with a null weight buffer and zero size.\n"
+      << "  if (weight_buffer == NULL && weight_size != 0) {\n"
       << "    return RET_ERROR;\n"
       << "  }\n";
   ofs << "  struct ModelParameter {\n"
@@ -294,10 +307,18 @@ void CodeWeightInitIfKeepWeight(std::ofstream &ofs, const std::unique_ptr<CoderC
 
 void CodeWeightInitIfNonKeepWeight(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx,
                                    const Configurator &config) {
-  ofs << "int Init" << ctx->GetCurModelIndex() << "(void *weight_buffer, int weight_size) {\n";
+  bool isStaticAlloc = (config.allocate_memory_type() == AllocateMemoryType::kStatic);
+  if (isStaticAlloc) {
+    ofs << "int Init" << ctx->GetCurModelIndex() << "(void *weight_buffer, int weight_size) {\n";
+    ofs << "  (void)weight_buffer;\n";
+    ofs << "  (void)weight_size;\n";
+  } else {
+    ofs << "int Init" << ctx->GetCurModelIndex() << "(void *weight_buffer, int weight_size) {\n";
+  }
 
   if (config.target() != kRiscV) {
-    ofs << "  if (weight_buffer == NULL) {\n"
+    ofs << "  // Models without constant weights are built with a null weight buffer and zero size.\n"
+        << "  if (weight_buffer == NULL && weight_size != 0) {\n"
         << "    return RET_ERROR;\n"
         << "  }\n";
 
@@ -354,8 +375,13 @@ void CodeWeightInitIfNonKeepWeight(std::ofstream &ofs, const std::unique_ptr<Cod
 }
 
 void CodeWeightInitFunc(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config) {
-  if (config.target() != kCortex_M || config.target() != kRiscV) {
-    ofs << "static size_t PackWeightSize" << ctx->GetCurModelIndex() << "() {\n";
+  bool isStaticAlloc = (config.allocate_memory_type() == AllocateMemoryType::kStatic);
+  if (config.target() != kCortex_M && config.target() != kRiscV) {
+    if (isStaticAlloc) {
+      ofs << "static size_t PackWeightSize" << ctx->GetCurModelIndex() << "(void) {\n";
+    } else {
+      ofs << "static size_t PackWeightSize" << ctx->GetCurModelIndex() << "() {\n";
+    }
     ofs << "  size_t w_size = 0;\n";
     for (const auto &block : ctx->GetInitWeightSizeCode()) {
       ofs << "  " << block;
@@ -384,7 +410,7 @@ void CodeWeightInitFunc(std::ofstream &ofs, const std::unique_ptr<CoderContext> 
 }
 
 void CodeWeightExportFunc(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config) {
-  if (config.target() == kCortex_M && config.target() == kRiscV) {
+  if (config.target() == kCortex_M || config.target() == kRiscV) {
     MS_LOG(DEBUG) << "weight file is unsupported to export when in Cortex M mode.";
     return;
   }

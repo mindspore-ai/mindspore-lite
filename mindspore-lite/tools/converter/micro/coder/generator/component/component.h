@@ -36,6 +36,7 @@ constexpr auto kModelName = "net";
 constexpr auto kIncludePath = "include";
 
 constexpr auto kSourcePath = "src";
+constexpr auto kAsmSourcePath = "asm";
 
 constexpr auto kBenchmarkPath = "benchmark";
 constexpr auto kBenchmarkFile = "benchmark.cc";
@@ -54,12 +55,16 @@ constexpr auto kThreadWrapper = "wrapper/thread/micro_thread_pool.h";
 
 constexpr auto kExternCpp =
   "#ifdef __cplusplus\n"
+  "#if __cplusplus\n"
   "extern \"C\" {\n"
+  "#endif\n"
   "#endif\n";
 
 constexpr auto kEndExternCpp =
   "#ifdef __cplusplus\n"
+  "#if __cplusplus\n"
   "}\n"
+  "#endif\n"
   "#endif\n";
 }  // namespace mindspore::lite::micro
 #endif  // MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_GENERATOR_COMPONENT_COMPONENT_H_

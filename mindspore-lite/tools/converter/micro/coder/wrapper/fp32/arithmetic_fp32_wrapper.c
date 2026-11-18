@@ -66,22 +66,23 @@ void BatchScalarCalc(const void *input0, const void *input1, void *output, int b
 }
 
 void BroadcastRun(const void *input0, const void *input1, void *output, int dim, int out_count, int out_thread_stride,
-                  int break_pos, int data_type_len, ArithmeticFuncType arithmetic_func_type,
-                  const void *arithmetic_func, const ArithmeticParameter *param) {
+                  int break_pos, int input_data_type_len, int output_data_type_len,
+                  ArithmeticFuncType arithmetic_func_type, const void *arithmetic_func,
+                  const ArithmeticParameter *param) {
   if (dim > break_pos) {
-    int offset = out_thread_stride * data_type_len;
+    int offset = out_thread_stride * output_data_type_len;
     ArithmeticExecute((const uint8_t *)(input0) + offset, (const uint8_t *)(input1) + offset,
                       (uint8_t *)(output) + offset, out_count, false, arithmetic_func_type, arithmetic_func, param);
     return;
   }
-  int offset_size[] = {param->in_strides0_[dim] * data_type_len, param->in_strides1_[dim] * data_type_len,
-                       param->out_strides_[dim] * data_type_len};
+  int offset_size[] = {param->in_strides0_[dim] * input_data_type_len, param->in_strides1_[dim] * input_data_type_len,
+                       param->out_strides_[dim] * output_data_type_len};
   for (int i = 0; i < param->out_shape_[dim]; ++i) {
     int pos0_ = param->in_shape0_[dim] == 1 ? 0 : i;
     int pos1_ = param->in_shape1_[dim] == 1 ? 0 : i;
     BroadcastRun((const uint8_t *)(input0) + pos0_ * offset_size[0], (const uint8_t *)(input1) + pos1_ * offset_size[1],
                  (uint8_t *)(output) + i * offset_size[2], dim + 1, out_count, out_thread_stride, break_pos,
-                 data_type_len, arithmetic_func_type, arithmetic_func, param);
+                 input_data_type_len, output_data_type_len, arithmetic_func_type, arithmetic_func, param);
   }
 }
 

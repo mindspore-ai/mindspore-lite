@@ -33,8 +33,8 @@ typedef struct {
   int thread_count_;
   int elements_num_;
   bool support_opt_add_;
-  int8_t *input0_data_;
-  int8_t *input1_data_;
+  const int8_t *input0_data_;
+  const int8_t *input1_data_;
   int8_t *output_data_;
 } AddInt8Args;
 

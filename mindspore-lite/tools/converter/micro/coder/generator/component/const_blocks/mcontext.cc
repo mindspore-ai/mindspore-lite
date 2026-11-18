@@ -52,6 +52,41 @@ typedef struct MicroContext {
 #endif  // MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_CONTEXT_H_
 )RAW";
 
+const char CONTEXT_HEADER_STATIC[] = R"RAW(
+/**
+ * Copyright 2022 Huawei Technologies Co., Ltd
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#ifndef MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_CONTEXT_H_
+#define MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_CONTEXT_H_
+
+#include <stdbool.h>
+#include "ai_mcu.h"
+
+typedef struct MicroContext {
+  char* vendor_name_;
+  int thread_num_; /**< thread number config for thread pool */
+  bool enable_parallel_;
+  int* affinity_core_list_; /**< explicitly specify the core to be bound. priority use affinity core list */
+  int core_num;
+  int affinity_mode;
+} MicroContext;
+
+#endif  // MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_CONTEXT_H_
+)RAW";
+
 const char context_source_cortex[] = R"RAW(
 /**
  * Copyright 2022 Huawei Technologies Co., Ltd
@@ -244,6 +279,88 @@ int MSContextGetThreadAffinityMode(const MSContextHandle context) {
     return micro_context->affinity_mode;
   }
   return 0;
+}
+)RAW";
+
+const char CONTEXT_SOURCE_NO_PARALLEL_STATIC[] = R"RAW(
+/**
+ * Copyright 2022 Huawei Technologies Co., Ltd
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "context.h"
+#include <string.h>
+#include "ai_mcu.h"
+
+static MicroContext g_micro_context;
+
+MSContextHandle MSContextCreate(void) {
+  g_micro_context.enable_parallel_ = false;
+  g_micro_context.thread_num_ = 1;
+  g_micro_context.affinity_core_list_ = NULL;
+  g_micro_context.core_num = 0;
+  g_micro_context.affinity_mode = 0;
+  return &g_micro_context;
+}
+
+void MSContextDestroy(MSContextHandle *context) {
+  if (context == NULL) {
+    return;
+  }
+  *context = NULL;
+}
+)RAW";
+
+const char CONTEXT_SOURCE_STATIC[] = R"RAW(
+/**
+ * Copyright 2022 Huawei Technologies Co., Ltd
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "context.h"
+#include <string.h>
+#include "ai_mcu.h"
+
+#define MAX_THREAD_NUM 4
+
+static MicroContext g_micro_context;
+
+MSContextHandle MSContextCreate(void) {
+  g_micro_context.enable_parallel_ = false;
+  g_micro_context.thread_num_ = 1;
+  g_micro_context.affinity_core_list_ = NULL;
+  g_micro_context.core_num = 0;
+  g_micro_context.affinity_mode = 0;
+  return &g_micro_context;
+}
+
+void MSContextDestroy(MSContextHandle *context) {
+  if (context == NULL) {
+    return;
+  }
+  *context = NULL;
 }
 )RAW";
 }  // namespace mindspore::lite::micro

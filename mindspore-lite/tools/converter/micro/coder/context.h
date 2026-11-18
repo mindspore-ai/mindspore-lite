@@ -99,7 +99,21 @@ class CoderContext {
   }
   size_t total_buffer_size() const { return total_buffer_size_; }
 
+  // Generated C address of the m*_weight storage inside the training buffer.
+  void set_train_weight_buffer_addr(const std::string &addr) { train_weight_buffer_addr_ = addr; }
+  std::string train_weight_buffer_addr() const { return train_weight_buffer_addr_; }
+  // Total bytes available from train_weight_buffer_addr().
+  void set_train_weight_buffer_size(size_t size) { train_weight_buffer_size_ = size; }
+  size_t train_weight_buffer_size() const { return train_weight_buffer_size_; }
+  // Generated C address of persistent optimizer state, such as SGD momentum.
+  void set_train_optimizer_state_addr(const std::string &addr) { train_optimizer_state_addr_ = addr; }
+  std::string train_optimizer_state_addr() const { return train_optimizer_state_addr_; }
+  // Total bytes available from train_optimizer_state_addr().
+  void set_train_optimizer_state_size(size_t size) { train_optimizer_state_size_ = size; }
+  size_t train_optimizer_state_size() const { return train_optimizer_state_size_; }
+
   void set_graph_inputs(const std::vector<Tensor *> &graph_inputs) { graph_inputs_ = graph_inputs; }
+  void set_graph_labels(const std::vector<Tensor *> &graph_labels) { graph_labels_ = graph_labels; }
   void set_graph_outputs(const std::vector<Tensor *> &graph_outputs) { graph_outputs_ = graph_outputs; }
   void set_graph_eval_outputs(const std::vector<Tensor *> &graph_eval_outputs) {
     graph_eval_outputs_ = graph_eval_outputs;
@@ -112,6 +126,7 @@ class CoderContext {
 
   std::string model_name() const { return model_name_; }
   std::vector<Tensor *> graph_inputs() const { return graph_inputs_; }
+  std::vector<Tensor *> graph_labels() const { return graph_labels_; }
   std::vector<Tensor *> graph_outputs() const { return graph_outputs_; }
   std::vector<Tensor *> graph_eval_outputs() const { return graph_eval_outputs_; }
   std::vector<Tensor *> graph_train_outputs() const { return graph_train_outputs_; }
@@ -130,6 +145,10 @@ class CoderContext {
   void AppendInitWeightSizeCode(const std::string &codeBlock);
 
   void AppendInitWeightSizeCode(size_t w_buf_size);
+
+  void AppendAsmCode(const std::string &fileName, const std::string &codeBlock);
+
+  std::map<std::string, std::string> asm_map() const { return asm_code_blocks_; }
 
   std::vector<std::string> GetInitWeightSizeCode() const;
 
@@ -158,10 +177,17 @@ class CoderContext {
   const std::vector<size_t> &buffer_sizes() const;
   const std::vector<size_t> &workspaces() const;
   std::string tensor_addr(const Tensor *tensor);
+  // Internal RunStep inputs are public graph inputs followed by synthetic train labels.
+  std::vector<Tensor *> graph_run_inputs() const {
+    std::vector<Tensor *> run_inputs = graph_inputs_;
+    run_inputs.insert(run_inputs.end(), graph_labels_.begin(), graph_labels_.end());
+    return run_inputs;
+  }
 
  private:
   std::string model_name_;
   std::vector<Tensor *> graph_inputs_;
+  std::vector<Tensor *> graph_labels_;
   std::vector<Tensor *> graph_outputs_;
   std::vector<Tensor *> graph_eval_outputs_;
   std::vector<Tensor *> graph_train_outputs_;
@@ -202,6 +228,7 @@ class CoderContext {
   std::vector<std::string> inference_blocks_;
   std::vector<std::string> after_inference_code_blocks_;
   std::vector<std::string> weight_buffer_size_code_blocks_;
+  std::map<std::string, std::string> asm_code_blocks_;
   std::size_t weight_buffer_size_ = 0;
   int model_index_;
   bool end_flag_{false};
@@ -210,6 +237,11 @@ class CoderContext {
   static size_t max_buffer_size_;
   ShapeInfoContainer *shape_info_container_{nullptr};
   DynamicMemManager *dynamic_mem_manager_{nullptr};
+
+  std::string train_weight_buffer_addr_;
+  size_t train_weight_buffer_size_{0};
+  std::string train_optimizer_state_addr_;
+  size_t train_optimizer_state_size_{0};
 };
 }  // namespace mindspore::lite::micro
 #endif  // MINDSPORE_LITE_MICRO_CODER_CONTEXT_H_

@@ -50,7 +50,7 @@ class Generator {
   int CodeWeightFile();
   virtual int CodeRegKernelHFile();
 
-  void CodeCommonNetH(std::ofstream &ofs);
+  void CodeCommonNetH(std::ofstream &ofs, const std::string &execute_param_name = "train_mode");
   void CodeCommonNetC(std::ofstream &ofs);
 
   Configurator *config_{nullptr};
@@ -76,8 +76,30 @@ class Generator {
   int CodeLogRegFile();
   int CodeCommonModelFile();
   int CodeMSModelImplement();
+  void CodeMSModelDeclarations(std::ofstream &ofs, bool isStaticAlloc);
   int CodeDataCFile();
   int CodeAllocatorFile();
+  void CodeAllocatorSourceContent(std::ofstream &cofs, bool isStaticAlloc);
+
+  void SelectCMakeListsContent(bool isStaticAlloc, std::string *bench_cmake_lists_txt,
+                               std::string *src_cmake_lists_txt);
+  void SelectContextAndTensorContent(bool isStaticAlloc, std::string *context_header_txt,
+                                     std::string *context_source_txt, std::string *tensor_header_txt,
+                                     std::string *tensor_source_txt);
+  void ReplaceAllPlaceholders(const std::string &placeholder, const std::string &replacement, std::string *content);
+  void ApplyStaticAllocPlaceholders(std::string *tensor_source_txt);
+  void SelectTargetSpecificContent(bool isStaticAlloc, std::string *bench_cmake_lists_txt,
+                                   std::string *calib_header_txt, std::string *calib_source_txt,
+                                   std::string *load_input_h_txt, std::string *load_input_c_txt,
+                                   std::string *benchmark_source_txt, std::string *context_source_txt,
+                                   std::string *log_header_txt, std::string *log_source_txt);
+  int CollectAndWriteConstBlocks(bool isStaticAlloc, const std::string &bench_cmake_lists_txt,
+                                 const std::string &calib_header_txt, const std::string &calib_source_txt,
+                                 const std::string &load_input_h_txt, const std::string &load_input_c_txt,
+                                 const std::string &benchmark_source_txt, const std::string &src_cmake_lists_txt,
+                                 const std::string &context_header_txt, const std::string &context_source_txt,
+                                 const std::string &tensor_header_txt, const std::string &tensor_source_txt,
+                                 const std::string &log_header_txt, const std::string &log_source_txt);
 
   std::string cmake_file_name_{"net.cmake"};
 #ifdef _MSC_VER

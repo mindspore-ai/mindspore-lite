@@ -69,8 +69,9 @@ void BatchScalarCalc(const void *input0, const void *input1, void *output, int b
                      const ArithmeticParameter *param);
 
 void BroadcastRun(const void *input0, const void *input1, void *output, int dim, int out_count, int out_thread_stride,
-                  int break_pos, int data_type_len, ArithmeticFuncType arithmetic_func_type,
-                  const void *arithmetic_func, const ArithmeticParameter *param);
+                  int break_pos, int input_data_type_len, int output_data_type_len,
+                  ArithmeticFuncType arithmetic_func_type, const void *arithmetic_func,
+                  const ArithmeticParameter *param);
 
 int ArithmeticFp32Run(void *cdata, int task_id, float lhs_scale, float rhs_scale);
 

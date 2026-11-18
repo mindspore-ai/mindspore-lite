@@ -23,65 +23,79 @@
 #include "coder/opcoders/parallel.h"
 
 namespace mindspore::lite::micro {
+void CodeAllocatorIncludes(std::ofstream &ofs, bool isRiscv) {
+  ofs << "#ifndef MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_ALLOCATOR_H_\n"
+      << "#define MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_ALLOCATOR_H_\n\n"
+      << "#include <stddef.h>\n";
+  if (!isRiscv) {
+    ofs << "#include \"stdatomic.h\"\n";
+  }
+  ofs << "#include \"stdbool.h\"\n";
+}
+
+void CodeMemBlockStruct(std::ofstream &ofs, bool isStaticAlloc) {
+  ofs << "  typedef struct MemBlock {\n" << "#ifdef __clang__\n";
+  if (isStaticAlloc) {
+    ofs << "    bool occupied;\n";
+  } else {
+    ofs << "    atomic_bool occupied;\n";
+  }
+  ofs << "#else\n"
+      << "    bool occupied;\n"
+      << "#endif\n"
+      << "    size_t size;\n"
+      << "    void *addr;\n"
+      << "    struct MemBlock *next;\n"
+      << "  } MemBlock;\n\n";
+}
+
+void CodeAllocatorFuncDecls(std::ofstream &ofs, bool isStaticAlloc, bool isRiscv) {
+  if (!isRiscv) {
+    ofs << "  void IncRefCount();\n";
+  }
+  if (isStaticAlloc) {
+    ofs << "  void DecRefCount(void);\n" << "  void *GlobalMemory(void);\n";
+  } else {
+    ofs << "  void DecRefCount();\n" << "  void *GlobalMemory();\n";
+    ofs << "  void *Malloc(size_t size);\n";
+  }
+  ofs << "  bool LockBuffer(void *block);\n" << "  bool UnLockBuffer(void *block);\n";
+}
+
+void CodeAllocatorHeaderContent(std::ofstream &ofs, bool isStaticAlloc, bool isRiscv) {
+  CodeAllocatorIncludes(ofs, isRiscv);
+  CodeMemBlockStruct(ofs, isStaticAlloc);
+  CodeAllocatorFuncDecls(ofs, isStaticAlloc, isRiscv);
+}
+
 void CodeAllocatorFileHeader(std::ofstream &ofs) {
   ofs << g_hwLicense;
   Configurator *config_ = Configurator::GetInstance();
-  if (config_->target() != kRiscV) {
-    ofs << "#ifndef MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_ALLOCATOR_H_\n"
-           "#define MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_ALLOCATOR_H_\n\n"
-        << "#include <stddef.h>\n"
-        << "#include \"stdatomic.h\"\n"
-        << "#include \"stdbool.h\"\n";
-    ofs << R"RAW(
-  typedef struct MemBlock {
-#ifdef __clang__
-    atomic_bool occupied;
-#else
-    bool occupied;
-#endif
-    size_t size;
-    void *addr;
-    struct MemBlock *next;
-  } MemBlock;
-
-  void IncRefCount();
-  void DecRefCount();
-  void *GlobalMemory();
-  void *Malloc(size_t size);
-  bool LockBuffer(void *block);
-  bool UnLockBuffer(void *block);
-  )RAW";
-  } else {
-    ofs << "#ifndef MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_ALLOCATOR_H_\n"
-           "#define MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_ALLOCATOR_H_\n\n"
-        << "#include <stddef.h>\n"
-        << "#include \"stdatomic.h\"\n"
-        << "#include \"stdbool.h\"\n";
-    ofs << R"RAW(
-  typedef struct MemBlock {
-#ifdef __clang__
-    atomic_bool occupied;
-#else
-    bool occupied;
-#endif
-    size_t size;
-    void *addr;
-    struct MemBlock *next;
-  } MemBlock;
-
-  void DecRefCount();
-  void *GlobalMemory();
-  void *Malloc(size_t size);
-  bool LockBuffer(void *block);
-  bool UnLockBuffer(void *block);
-  )RAW";
-  }
+  bool isStaticAlloc = (config_->allocate_memory_type() == AllocateMemoryType::kStatic);
+  bool isRiscv = (config_->target() == kRiscV);
+  CodeAllocatorHeaderContent(ofs, isStaticAlloc, isRiscv);
   ofs << "\n#endif  // MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_ALLOCATOR_H_\n";
 }
 
-void CodeCalcRefCount(std::ofstream &ofs) {
-  Configurator *config_ = Configurator::GetInstance();
-  if (config_->target() != kRiscV) {
+void CodeCalcRefCountNonRiscV(std::ofstream &ofs, bool isStaticAlloc) {
+  if (isStaticAlloc) {
+    ofs << R"RAW(
+  void IncRefCount() { ++kReferenceCount; }
+
+  void DecRefCount(void) {
+    --kReferenceCount;
+    bool expected = false;
+    while (!atomic_compare_exchange_strong(&kLock, &expected, true)) {
+      expected = false;
+    }
+    if (kReferenceCount == 0) {
+      mem_block = NULL;
+    }
+    kLock = false;
+  }
+
+  )RAW";
+  } else {
     ofs << R"RAW(
   void IncRefCount() { ++kReferenceCount; }
 
@@ -102,6 +116,17 @@ void CodeCalcRefCount(std::ofstream &ofs) {
   }
 
   )RAW";
+  }
+}
+
+void CodeCalcRefCountRiscV(std::ofstream &ofs, bool isStaticAlloc) {
+  if (isStaticAlloc) {
+    ofs << R"RAW(
+void DecRefCount(void) {
+  mem_block = NULL;
+}
+
+  )RAW";
   } else {
     ofs << R"RAW(
   void DecRefCount() {
@@ -116,11 +141,39 @@ void CodeCalcRefCount(std::ofstream &ofs) {
   }
 }
 
-void CodeGlobalMemory(std::ofstream &ofs, size_t size) {
+void CodeCalcRefCountContent(std::ofstream &ofs, bool isStaticAlloc, bool isRiscv) {
+  if (!isRiscv) {
+    CodeCalcRefCountNonRiscV(ofs, isStaticAlloc);
+  } else {
+    CodeCalcRefCountRiscV(ofs, isStaticAlloc);
+  }
+}
+
+void CodeCalcRefCount(std::ofstream &ofs) {
   Configurator *config_ = Configurator::GetInstance();
-  if (config_->target() != kRiscV) {
-    ofs << "void *GlobalMemory() {\n"
-        << "size_t init_size = " << size << ";\n";
+  bool isStaticAlloc = (config_->allocate_memory_type() == AllocateMemoryType::kStatic);
+  bool isRiscv = (config_->target() == kRiscV);
+  CodeCalcRefCountContent(ofs, isStaticAlloc, isRiscv);
+}
+
+void CodeGlobalMemoryNonRiscV(std::ofstream &ofs, size_t size, bool isStaticAlloc) {
+  if (isStaticAlloc) {
+    ofs << "void *GlobalMemory(void) {\n" << "    size_t init_size = " << size << ";\n";
+    ofs << R"RAW(
+    if (mem_block != NULL) {
+      return mem_block;
+    }
+    memset(g_memory_pool, 0, sizeof(g_memory_pool));
+    mem_block = &g_mem_block;
+    mem_block->occupied = false;
+    mem_block->size = init_size;
+    mem_block->addr = g_memory_pool + sizeof(MemBlock);
+    mem_block->next = NULL;
+    return mem_block;
+  }
+  )RAW";
+  } else {
+    ofs << "void *GlobalMemory() {\n" << "    size_t init_size = " << size << ";\n";
     ofs << R"RAW(
     bool expected = false;
     while (!atomic_compare_exchange_strong(&kLock, &expected, true)) {
@@ -131,12 +184,6 @@ void CodeGlobalMemory(std::ofstream &ofs, size_t size) {
       return mem_block;
     }
     mem_block = malloc(sizeof(MemBlock) + init_size);
-    if (mem_block == NULL) {
-      // Report through the NULL return: MSModelCreate0 turns it into an allocation error status,
-      // no direct printf here because output backends are not guaranteed on micro devices.
-      kLock = false;
-      return NULL;
-    }
     mem_block->occupied = false;
     mem_block->size = init_size;
     mem_block->addr = (char *)mem_block + sizeof(MemBlock);
@@ -145,17 +192,30 @@ void CodeGlobalMemory(std::ofstream &ofs, size_t size) {
     return mem_block;
   }
   )RAW";
+  }
+}
+
+void CodeGlobalMemoryRiscV(std::ofstream &ofs, size_t size, bool isStaticAlloc) {
+  if (isStaticAlloc) {
+    ofs << "void *GlobalMemory(void) {\n" << "    size_t init_size = " << size << ";\n";
+    ofs << R"RAW(
+    if (mem_block != NULL) {
+      return mem_block;
+    }
+    memset(g_memory_pool, 0, sizeof(g_memory_pool));
+    mem_block = &g_mem_block;
+    mem_block->occupied = false;
+    mem_block->size = init_size;
+    mem_block->addr = g_memory_pool + sizeof(MemBlock);
+    mem_block->next = NULL;
+    return mem_block;
+  }
+  )RAW";
   } else {
-    ofs << "void *GlobalMemory() {\n"
-        << "size_t init_size = " << size << ";\n";
+    ofs << "void *GlobalMemory() {\n" << "    size_t init_size = " << size << ";\n";
     ofs << R"RAW(
     bool expected = false;
     mem_block = malloc(sizeof(MemBlock) + init_size);
-    if (mem_block == NULL) {
-      // Report through the NULL return: MSModelCreate0 turns it into an allocation error status,
-      // no direct printf here because output backends are not guaranteed on micro devices.
-      return NULL;
-    }
     mem_block->occupied = false;
     mem_block->size = init_size;
     mem_block->addr = (char *)mem_block + sizeof(MemBlock);
@@ -166,10 +226,27 @@ void CodeGlobalMemory(std::ofstream &ofs, size_t size) {
   }
 }
 
+void CodeGlobalMemoryContent(std::ofstream &ofs, size_t size, bool isStaticAlloc, bool isRiscv) {
+  if (!isRiscv) {
+    CodeGlobalMemoryNonRiscV(ofs, size, isStaticAlloc);
+  } else {
+    CodeGlobalMemoryRiscV(ofs, size, isStaticAlloc);
+  }
+}
+
+void CodeGlobalMemory(std::ofstream &ofs, size_t size) {
+  Configurator *config_ = Configurator::GetInstance();
+  bool isStaticAlloc = (config_->allocate_memory_type() == AllocateMemoryType::kStatic);
+  bool isRiscv = (config_->target() == kRiscV);
+  CodeGlobalMemoryContent(ofs, size, isStaticAlloc, isRiscv);
+}
+
 void CodeMemoryOccupied(std::ofstream &ofs) {
   Configurator *config_ = Configurator::GetInstance();
-  if (config_->target() != kRiscV) {
-    ofs << R"RAW(
+  bool isStaticAlloc = (config_->allocate_memory_type() == AllocateMemoryType::kStatic);
+  if (!isStaticAlloc) {
+    if (config_->target() != kRiscV) {
+      ofs << R"RAW(
   void *Malloc(size_t size) {
     bool expected = false;
     while (!atomic_compare_exchange_strong(&kLock, &expected, true)) {
@@ -197,19 +274,18 @@ void CodeMemoryOccupied(std::ofstream &ofs) {
       kLock = false;
       return find;
     }
-    MemBlock *block = malloc(sizeof(MemBlock) + size);
+    MemBlock *block = (MemBlock *)malloc(sizeof(MemBlock) + size);
     block->occupied = true;
     block->size = size;
     block->addr = (char *)block + sizeof(MemBlock);
-    block->next = NULL;
     block->next = pre->next;
     pre->next = block;
     kLock = false;
     return block;
   }
   )RAW";
-  } else {
-    ofs << R"RAW(
+    } else {
+      ofs << R"RAW(
   void *Malloc(size_t size) {
     bool expected = false;
     MemBlock *pre = mem_block;
@@ -225,20 +301,20 @@ void CodeMemoryOccupied(std::ofstream &ofs) {
       pre = cur;
       cur = cur->next;
     }
-    MemBlock *block = malloc(sizeof(MemBlock) + size);
+    MemBlock *block = (MemBlock *)malloc(sizeof(MemBlock) + size);
     block->occupied = true;
     block->size = size;
     block->addr = (char *)block + sizeof(MemBlock);
-    block->next = NULL;
     block->next = pre->next;
     pre->next = block;
     return block;
 }
   )RAW";
+    }
   }
 }
 
-void CodeLockOccupied(std::ofstream &ofs) {
+void CodeLockOccupied(std::ofstream &ofs, bool isStaticAlloc) {
   Configurator *config_ = Configurator::GetInstance();
   if (config_->target() != kRiscV) {
     ofs << R"RAW(
@@ -255,7 +331,22 @@ void CodeLockOccupied(std::ofstream &ofs) {
   }
   )RAW";
   } else {
-    ofs << R"RAW(
+    if (isStaticAlloc) {
+      ofs << R"RAW(
+  bool LockBuffer(void *block) {
+    (void)block;
+    bool expected = true;
+    return expected;
+  }
+
+  bool UnLockBuffer(void *block) {
+    (void)block;
+    bool expected = true;
+    return expected;
+  }
+  )RAW";
+    } else {
+      ofs << R"RAW(
   bool LockBuffer(void *block) {
     MemBlock *m_block = block;
     bool expected = true;
@@ -268,6 +359,7 @@ void CodeLockOccupied(std::ofstream &ofs) {
     return expected;
   }
   )RAW";
+    }
   }
 }
 }  // namespace mindspore::lite::micro
