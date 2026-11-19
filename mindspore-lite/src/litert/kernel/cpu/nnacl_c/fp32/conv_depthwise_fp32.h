@@ -33,6 +33,9 @@ void DepthwiseCenter(float *dst, const float *src, const float *weight, const fl
 int ConvDw(float *output_data, const float *input_data, const float *weight_data, const float *bias_data,
            const ConvParameter *conv_param, int task_id);
 
+int DepthwiseConvFp32(float *output_data, const float *input_data, const float *filter_data, const float *bias_data,
+                      const ConvParameter *conv_param);
+
 int ConvDwAVX512(float *output_data, const float *input_data, const float *weight_data, const float *bias_data,
                  const ConvParameter *conv_param, int task_id, ConvDwCalcParam *conv_dw_calc_param_);
 

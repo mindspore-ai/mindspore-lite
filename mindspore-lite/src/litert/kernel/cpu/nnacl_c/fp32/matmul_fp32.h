@@ -77,6 +77,9 @@ void MatmulFloatRvv64Opt(const float *a, const float *b, float *c, const float *
                          int col, int stride, int write_mode);
 #endif
 
+void MatmulLowMemory(const float *a, const float *b, float *dst, const float *bias, ActType act_type, int deep, int row,
+                     int col, bool transA, bool transB);
+
 void MatMul12x8(const float *a, const float *b, float *dst, const float *bias, ActType act_type, int deep, int row,
                 int col, int stride, int out_type);
 
